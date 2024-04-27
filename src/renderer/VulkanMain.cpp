@@ -64,7 +64,7 @@ void Vulkan::InitVulkan(VulkanData &vd)
         std::cerr << "Failed to create Vulkan instance!, Check to see if your drivers are installed proprely" << std::endl;
     }
 
-    CreateSurface(hInstance, hwnd, vd);
+    // CreateSurface(hInstance, hwnd, vd);
 
     // Select a physical device
     uint32_t deviceCount = 0;
@@ -76,9 +76,10 @@ void Vulkan::InitVulkan(VulkanData &vd)
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(vd.instance_, &deviceCount, devices.data());
 
+    // For GPU Info
+    VkPhysicalDeviceProperties deviceProperties;
     // Choose the best suitable device (e.g., preferring dedicated GPU)
     for (const auto& device : devices) {
-        VkPhysicalDeviceProperties deviceProperties;
         vkGetPhysicalDeviceProperties(device, &deviceProperties);
         if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
             vd.physicalDevice_ = device;
@@ -90,12 +91,24 @@ void Vulkan::InitVulkan(VulkanData &vd)
         vd.physicalDevice_ = devices[0]; // Fallback to the first device if no dedicated GPU is found
     }
 
+    Logger::Log(LogLevel::INFO, "GPU: ", deviceProperties.deviceName);
+
+    // Assuming driverVersion is a version number you want to display as is
+    Logger::Log(LogLevel::INFO, "Driver Version: ", std::to_string(deviceProperties.driverVersion));
+
+    // Decode the Vulkan API version number according to Vulkan's versioning scheme
+    uint32_t apiMajor = VK_VERSION_MAJOR(deviceProperties.apiVersion);
+    uint32_t apiMinor = VK_VERSION_MINOR(deviceProperties.apiVersion);
+    uint32_t apiPatch = VK_VERSION_PATCH(deviceProperties.apiVersion);
+    Logger::Log(LogLevel::INFO, "Vulkan API Version: ", fmt::format("{}.{}.{}", apiMajor, apiMinor, apiPatch));
+
     // Create a logical device
     VkDeviceCreateInfo deviceCreateInfo{};
     deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
     VkPhysicalDeviceFeatures deviceFeatures{};
     deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+
 
     if (vkCreateDevice(vd.physicalDevice_, &deviceCreateInfo, nullptr, &vd.device_) != VK_SUCCESS) {
         throw std::runtime_error("failed to create logical device!");

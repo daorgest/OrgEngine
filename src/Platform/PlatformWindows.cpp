@@ -81,6 +81,7 @@ namespace Win32
 			exit(1);
 		}
 
+
 		hwnd_ = CreateWindowEx(
 			0,
 			appName_,
@@ -96,10 +97,13 @@ namespace Win32
 			this
 		);
 
+
 		if (!hwnd_) {
 			MessageBox(nullptr, L"Failed to create window.", L"Error", MB_OK | MB_ICONERROR);
 			exit(1); // Terminate if cannot create window
 		}
+
+		Logger::Log(INFO, "Win32 Initilzed ");
 
 		// Now to show the window
 		ShowWindow(hwnd_, SW_SHOW);

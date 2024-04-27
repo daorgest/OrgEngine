@@ -32,8 +32,7 @@ file(GLOB_RECURSE SOURCE_FILES "src/*.cpp" )
 
 # Add source to this project's executable
 add_executable(OrgEngine WIN32 ${SOURCE_FILES}
-        src/Platform/InputHandler.h
-        src/Platform/InputHandler.cpp)
+        src/Core/Logger.h)
 
 # Find Vulkan package
 find_package(Vulkan REQUIRED)

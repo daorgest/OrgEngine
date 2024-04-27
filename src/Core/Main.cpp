@@ -1,7 +1,6 @@
 
 //#include "../renderer/VulkanMain.h"
 
-
 #include "../Platform/PlatformWindows.h"  // Include the header for your WindowManager class.
 #include "../renderer/VulkanMain.h"
 
