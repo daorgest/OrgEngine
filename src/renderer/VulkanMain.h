@@ -3,47 +3,69 @@
 //
 #pragma once
 
-#include    <iostream>
-#include	<memory>
+#include    <deque>
 #include	<string>
 #include    <vector>
-
 #ifdef _WIN32
 #define		VK_USE_PLATFORM_WIN32_KHR
 #endif
+#include <functional>
 #include <vulkan/vulkan.h>
-
-namespace Win32
-{
-    class WindowManager;
-}
+#include "../Platform/PlatformWindows.h"
 
 namespace GraphicsAPI
 {
+
+    struct DeletionQueue
+    {
+        std::deque<std::function<void()>> deletors;
+
+        void push_function(std::function<void()>&& function) {
+            deletors.push_back(function);
+        }
+
+        void flush() {
+            // reverse iterate the deletion queue to execute all the functions
+            for (auto it = deletors.rbegin(); it != deletors.rend(); ++it) {
+                (*it)(); //call functors
+            }
+
+            deletors.clear();
+        }
+    };
+
     inline struct VulkanData
     {
-        VkInstance instance_{};
-        VkDebugUtilsMessengerEXT dbgMessenger_{};
-        VkPhysicalDevice physicalDevice_{};
-        VkDevice device_{};
-        VkSurfaceKHR surface_{};
-    } vd ; // YEAHHHHHHHHHHH FOR ANYTHING THIS, ACCEESS IT HERE
+        VkInstance instance_{VK_NULL_HANDLE};
+        VkDebugUtilsMessengerEXT dbgMessenger_{VK_NULL_HANDLE};
+        VkPhysicalDevice physicalDevice_{VK_NULL_HANDLE};
+        VkDevice device_{VK_NULL_HANDLE};
+        VkSurfaceKHR surface_{VK_NULL_HANDLE};
+        DeletionQueue deletionQueue;
+    } vd;
 
-
-    class Vulkan
+    class VkEngine
     {
     public:
-        void InitVulkan(VulkanData& vd);
-        void CreateSurface(HINSTANCE hInstance, HWND hwnd, VulkanData& vd);
-        void InitVulkanAPI(const Win32::WindowManager& windowManager);
-        void PrintAvailableExtensions() const;
+        explicit VkEngine(Win32::WindowManager &winManager);
+        ~VkEngine();
+
+        void InitVulkan();
+        static void CreateSurface(HINSTANCE hInstance, HWND hwnd, VulkanData& vd);
+        void InitVulkanAPI();
         static void SetupDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
-
+        static void PrintAvailableExtensions();
+        static std::string decodeDriverVersion(uint32_t driverVersion, uint32_t vendorID);
+        static void SetupDebugMessenger();
+        void DestroyVulkanObjects();
+        bool CheckValidationLayerSupport();
+        std::vector<const char*> getRequiredExtensions();
     private:
-
+        Win32::WindowManager &winManager;
         static constexpr const char* enabledExtensions[] = {
             VK_KHR_SURFACE_EXTENSION_NAME,
-            VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+            VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+            VK_KHR_WIN32_SURFACE_EXTENSION_NAME // REALLLY THINKIN ABOUT USING VK BOOTSTRAP
         };
     };
 }

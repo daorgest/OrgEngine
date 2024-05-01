@@ -31,10 +31,11 @@ namespace Win32
         WindowManager();
         ~WindowManager();
 
-        void CreateAppWindow();
+        bool CreateAppWindow();
         static void InputHandler();
         void TheMessageLoop() const;
         static LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+        bool RegisterWindowClass();
 
         WindowManager(const WindowManager&) = delete;
         WindowManager& operator=(const WindowManager&) = delete;

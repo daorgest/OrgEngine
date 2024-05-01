@@ -20,8 +20,16 @@ if(MSVC)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Od /ZI /DEBUG")
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<CONFIG:Debug,RelWithDebInfo>,EditAndContinue,ProgramDatabase>")
   # Ensure we are using wide characters on Windows
-  add_definitions(-DUNICODE -D_UNICODE)
+elseif(MINGW)
+  # Set MinGW specific flags
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wa,-mbig-obj")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Og -g3")
 endif()
+
+# Ensure we are using wide characters on Windows universally
+add_definitions(-DUNICODE -D_UNICODE)
+
 
 # Set C++ standard to C++20
 set(CMAKE_CXX_STANDARD 20)
@@ -32,7 +40,8 @@ file(GLOB_RECURSE SOURCE_FILES "src/*.cpp" )
 
 # Add source to this project's executable
 add_executable(OrgEngine WIN32 ${SOURCE_FILES}
-        src/Core/Logger.h)
+        src/Core/Logger.h
+)
 
 # Find Vulkan package
 find_package(Vulkan REQUIRED)
@@ -43,7 +52,7 @@ add_subdirectory(libs/fmt)
 target_include_directories(OrgEngine PRIVATE ${Vulkan_INCLUDE_DIRS})
 
 # Link
-target_link_libraries(OrgEngine PRIVATE ${Vulkan_LIBRARIES} fmt::fmt)
+target_link_libraries(OrgEngine PRIVATE ${Vulkan_LIBRARIES} fmt::fmt User32.lib)
 
 
 target_compile_definitions(OrgEngine PRIVATE

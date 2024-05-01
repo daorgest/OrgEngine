@@ -6,7 +6,8 @@
 namespace Win32
 {
 
-	WindowManager::WindowManager() : hInstance_(GetModuleHandle(nullptr)) {
+	WindowManager::WindowManager() : hwnd_(nullptr), hInstance_(GetModuleHandle(nullptr))
+	{
 		dimensions.screenWidth = GetSystemMetrics(SM_CXSCREEN) / 2;
 		dimensions.screenHeight = GetSystemMetrics(SM_CYSCREEN) / 2;
 	}
@@ -14,10 +15,10 @@ namespace Win32
 
 	WindowManager::~WindowManager()
 	{
-		windowStuff.running = false;
-		// Clean up the created window
 		if (hwnd_) {
-			DestroyWindow(hwnd_);
+			if (!DestroyWindow(hwnd_)) {
+				Logger::Log(ERR, "Failed to destroy window. HWND:", hwnd_);
+			}
 			hwnd_ = nullptr;
 		}
 		UnregisterClass(appName_, hInstance_);
@@ -54,6 +55,7 @@ namespace Win32
 		case WM_KILLFOCUS:
 			windowStuff.input.focused = false;
 			break;
+
 		default:
 			//there are many messages that we didn't treat so we want to call the default window callback for those...
 			rez = DefWindowProc(hwnd, msg, wp, lp);
@@ -63,7 +65,8 @@ namespace Win32
 	}
 
 	// This creates the window class and initiates window creation
-	void WindowManager::CreateAppWindow() {
+	bool WindowManager::RegisterWindowClass()
+	{
 		WNDCLASSEX wcex
 		{
 			.cbSize = sizeof(wcex),
@@ -80,12 +83,19 @@ namespace Win32
 			MessageBox(nullptr, L"Cannot register window class :/.", L"Error", MB_OK | MB_ICONERROR);
 			exit(1);
 		}
+		return true;
+	}
 
-
+	bool WindowManager::CreateAppWindow()
+	{
 		hwnd_ = CreateWindowEx(
 			0,
 			appName_,
-			appName_,
+#ifdef DEBUG
+L"OrgEngine - Debug",            // Window text (Debug version)
+#else
+L"OrgEngine - Release",          // Window text (Release version)
+#endif
 			WS_OVERLAPPEDWINDOW,
 			CW_USEDEFAULT,
 			CW_USEDEFAULT,
@@ -94,22 +104,23 @@ namespace Win32
 			nullptr,
 			nullptr,
 			hInstance_,
-			this
+			nullptr
 		);
 
 
 		if (!hwnd_) {
 			MessageBox(nullptr, L"Failed to create window.", L"Error", MB_OK | MB_ICONERROR);
-			exit(1); // Terminate if cannot create window
+			return false;
 		}
-
-		Logger::Log(INFO, "Win32 Initilzed ");
 
 		// Now to show the window
 		ShowWindow(hwnd_, SW_SHOW);
 		SetForegroundWindow(hwnd_);
 		SetFocus(hwnd_);
 		UpdateWindow(hwnd_);
+
+		Logger::Log(INFO, "Window created successfully. HWND:", hwnd_);
+		return true;
 	}
 
 	void WindowManager::InputHandler()
@@ -135,18 +146,13 @@ namespace Win32
 	void WindowManager::TheMessageLoop() const
 	{
 		MSG msg = {};
-
-
 		while (windowStuff.running)
 		{
 			while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE) > 0) //remove all mesages from queue
 			{
 				TranslateMessage(&msg);
 				DispatchMessage(&msg); //call our window callback
-
 			}
-
-
 			InputHandler();
 
 			// GAME LOOP GOES HERE
@@ -156,11 +162,8 @@ namespace Win32
 				resetInput(windowStuff.input);
 			}
 
-
-
 			processInputAfter(windowStuff.input);
 		}
-
 	}
 }
 
