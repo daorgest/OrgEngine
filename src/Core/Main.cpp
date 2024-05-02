@@ -4,6 +4,7 @@
 #include "../Platform/PlatformWindows.h"  // Include the header for your WindowManager class.
 #include "../renderer/VulkanMain.h"
 
+// Color coding for my logs
 void enableVirtualTerminalProcessing() {
 	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
 	DWORD dwMode = 0;

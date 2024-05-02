@@ -1,7 +1,4 @@
-﻿# CMakeList.txt : CMake project for OrgEngine, include source and define
-# project specific logic here.
-#
-cmake_minimum_required(VERSION 3.28)
+﻿cmake_minimum_required(VERSION 3.28)
 
 project("OrgEngine")
 
@@ -19,7 +16,6 @@ if(MSVC)
   # Debug flags
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Od /ZI /DEBUG")
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<CONFIG:Debug,RelWithDebInfo>,EditAndContinue,ProgramDatabase>")
-  # Ensure we are using wide characters on Windows
 elseif(MINGW)
   # Set MinGW specific flags
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wa,-mbig-obj")
@@ -47,12 +43,17 @@ add_executable(OrgEngine WIN32 ${SOURCE_FILES}
 find_package(Vulkan REQUIRED)
 
 add_subdirectory(libs/fmt)
-
+add_subdirectory(libs/vk-bootstrap)
 # Include Vulkan headers
 target_include_directories(OrgEngine PRIVATE ${Vulkan_INCLUDE_DIRS})
 
 # Link
-target_link_libraries(OrgEngine PRIVATE ${Vulkan_LIBRARIES} fmt::fmt User32.lib)
+target_link_libraries(OrgEngine PRIVATE
+        ${Vulkan_LIBRARIES}
+        fmt::fmt
+        vk-bootstrap::vk-bootstrap
+        User32.lib
+)
 
 
 target_compile_definitions(OrgEngine PRIVATE

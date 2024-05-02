@@ -1,53 +1,25 @@
 #pragma once
+#include <array>
 #include <windows.h>
 
 
-struct Button
-{
-	
-	unsigned char pressed = 0;	//true in the first frame it is pressed
-	unsigned char held = 0;		//true while is pressed
-	unsigned char released = 0;	//true while is released
-	unsigned char altWasDown = 0; //true if alt was down while pressed
+struct Button {
+	unsigned char pressed = 0;    // True in the first frame it is pressed
+	unsigned char held = 0;       // True while it is pressed
+	unsigned char released = 0;   // True in the frame it is released
+	unsigned char altWasDown = 0; // True if alt was down while pressed
 
-	enum
-	{
-		A = 0,
-		B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
-		NR0, NR1, NR2, NR3, NR4, NR5, NR6, NR7, NR8, NR9,
-		Space,
-		Enter,
-		Escape,
-		Up,
-		Down,
-		Left,
-		Right,
-		Shift,
-		BackSpace, //next line 
-		Plus_Equal,
-		Period_RightArrow,
-		Minus_Underscore,
-		Comma_LeftArrow,
-		SemiColon,
-		Question_BackSlash,
-		Tilde,
-		Quotes,
-		Slash,
-		SquareBracketsOpen,
-		SquareBracketsClose,
-		BUTTONS_COUNT, //
+	enum Keys {
+		A = 0x41, B = 0x42, C = 0x43, D = 0x44, E = 0x45, F = 0x46, G = 0x47, H = 0x48, I = 0x49,
+		J = 0x4A, K = 0x4B, L = 0x4C, M = 0x4D, N = 0x4E, O = 0x4F, P = 0x50, Q = 0x51, R = 0x52,
+		S = 0x53, T = 0x54, U = 0x55, V = 0x56, W = 0x57, X = 0x58, Y = 0x59, Z = 0x5A,
+		NR0 = '0', NR1 = '1', NR2 = '2', NR3 = '3', NR4 = '4', NR5 = '5', NR6 = '6', NR7 = '7', NR8 = '8', NR9 = '9',
+		Space = VK_SPACE, Enter = VK_RETURN, Escape = VK_ESCAPE, Up = VK_UP, Down = VK_DOWN, Left = VK_LEFT, Right = VK_RIGHT,
+		Shift = VK_SHIFT, BackSpace = VK_BACK, Plus_Equal = VK_OEM_PLUS, Period_RightArrow = VK_OEM_PERIOD,
+		Minus_Underscore = VK_OEM_MINUS, Comma_LeftArrow = VK_OEM_COMMA, SemiColon = VK_OEM_1, Question_BackSlash = VK_OEM_2,
+		Tilde = VK_OEM_3, Quotes = VK_OEM_7, Slash = VK_OEM_5, SquareBracketsOpen = VK_OEM_4, SquareBracketsClose = VK_OEM_6,
+		BUTTONS_COUNT
 	};
-
-	static constexpr int buttonValues[BUTTONS_COUNT] =
-	{
-		'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
-		'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-		'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-		VK_SPACE, VK_RETURN, VK_ESCAPE, VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_SHIFT,
-		VK_BACK, VK_OEM_PLUS, VK_OEM_PERIOD, VK_OEM_MINUS, VK_OEM_COMMA, VK_OEM_1, VK_OEM_2, VK_OEM_3,
-		VK_OEM_7, VK_OEM_5, VK_OEM_4, VK_OEM_6,
-	};
-
 
 };
 

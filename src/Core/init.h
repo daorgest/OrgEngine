@@ -15,8 +15,6 @@
 #include    <Windows.h>
 #endif
 
-
-
 #ifdef DX12_Build
 #include "d3dx12.h"
 #include <dxgi1_6.h>

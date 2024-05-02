@@ -4,7 +4,13 @@
 
 #include "VulkanMain.h"
 
+#include "VkBootstrap.h"
+
+#ifndef NDEBUG
+constexpr bool bUseValidationLayers = true;
+#else
 constexpr bool bUseValidationLayers = false;
+#endif
 
 using namespace GraphicsAPI;
 
@@ -22,21 +28,38 @@ VkEngine::~VkEngine()
 
 
 void VkEngine::SetupDebugMessenger() {
+    if (!bUseValidationLayers) {
+        LOG(INFO, "Validation layers not enabled.");
+        return; // Early exit if validation layers are not enabled
+    }
+
     VkDebugUtilsMessengerCreateInfoEXT createInfo{};
     SetupDebugMessengerCreateInfo(createInfo);
 
-    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(vd.instance_, "vkCreateDebugUtilsMessengerEXT");
-    if (func != nullptr) {
-        func(vd.instance_, &createInfo, nullptr, &vd.dbgMessenger_);
-        vd.deletionQueue.push_function([=]() {
-            auto destroyFunc = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(vd.instance_, "vkDestroyDebugUtilsMessengerEXT");
-            if (destroyFunc != nullptr) {
-                destroyFunc(vd.instance_, vd.dbgMessenger_, nullptr);
-            }
-        });
-    } else {
-        std::cerr << "Could not load vkCreateDebugUtilsMessengerEXT" << std::endl;
+    // The function pointer for creating the debug messenger
+    auto createDebugUtilsMessengerFunc = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(vd.instance_, "vkCreateDebugUtilsMessengerEXT");
+    if (!createDebugUtilsMessengerFunc) {
+        LOG(ERR, "Failed to load vkCreateDebugUtilsMessengerEXT.");
+        return;
     }
+
+    // Create the debug messenger and handle possible errors
+    if (createDebugUtilsMessengerFunc(vd.instance_, &createInfo, nullptr, &vd.dbgMessenger_) != VK_SUCCESS) {
+        LOG(ERR, "Failed to set up debug messenger!");
+        return;
+    }
+
+    // Add to the deletion queue to ensure it's cleaned up at the end
+    vd.deletionQueue.push_function([=]() {
+        auto destroyDebugUtilsMessengerFunc = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(vd.instance_, "vkDestroyDebugUtilsMessengerEXT");
+        if (destroyDebugUtilsMessengerFunc != nullptr) {
+            destroyDebugUtilsMessengerFunc(vd.instance_, vd.dbgMessenger_, nullptr);
+        } else {
+            LOG(WARN, "Failed to load vkDestroyDebugUtilsMessengerEXT.");
+        }
+    });
+
+    LOG(INFO, "Debug messenger created successfully.");
 }
 
 void VkEngine::SetupDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
@@ -47,8 +70,10 @@ void VkEngine::SetupDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT&
     createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
                              VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                              VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    createInfo.pfnUserCallback = [](VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) -> VkBool32 {
-        std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+    createInfo.pfnUserCallback = [](VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT
+        type, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) -> VkBool32
+    {
+        LOG(DEBUGGING, "Validation layer: " + std::string(pCallbackData->pMessage));
         return VK_FALSE;
     };
     createInfo.pUserData = nullptr; // Optional
@@ -95,89 +120,57 @@ std::string VkEngine::decodeDriverVersion(uint32_t driverVersion, uint32_t vendo
 
 void VkEngine::InitVulkan()
 {
-    Logger::Log(INFO, "Initilzing Vulkan");
-    VkApplicationInfo appInfo
-    {
-        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = "OrgEngine",
-        .pEngineName = "OrgEngine",
-        .apiVersion = VK_API_VERSION_1_3
-    };
+    LOG(INFO, "Initializing Vulkan");
+    vkb::InstanceBuilder builder;
 
-    const VkInstanceCreateInfo instInfo
-    {
-        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pApplicationInfo = &appInfo,
-        .enabledExtensionCount = static_cast<uint32_t>(std::size(enabledExtensions)),
-        .ppEnabledExtensionNames = enabledExtensions
-    };
-
-    if (vkCreateInstance(&instInfo, nullptr, &vd.instance_) != VK_SUCCESS) {
-        MessageBox(nullptr, L"Failed to create Vulkan instance!, Check to see if your drivers are installed proprely",
-                   L"GPU Error!", MB_OK);
-        std::cerr << "Failed to create Vulkan instance!, Check to see if your drivers are installed proprely" << std::endl;
-    }
-    Logger::Log(INFO, "Vulkan Instance created!");
-
-    // Setup debug messenger if validation layers are enabled
-    if (bUseValidationLayers && CheckValidationLayerSupport()) {
-        SetupDebugMessenger();
-        Logger::Log(INFO, "Debug Messenger created!");
-    } else if (bUseValidationLayers) {
-        Logger::Log(WARN, "Validation layers requested, but not available!");
+    auto inst_ret = builder.set_app_name ("OrgEngine")
+                       .request_validation_layers ()
+                       .require_api_version(1, 3)
+                       .use_default_debug_messenger ()
+                       .build ();
+    if (!inst_ret) {
+        LOG(ERR, "Failed to create Vulkan instance. Error: " + inst_ret.error().message());
     }
 
-    // Select a physical device
-    uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(vd.instance_, &deviceCount, nullptr);
-    if (deviceCount == 0) {
-        throw std::runtime_error("failed to find GPUs with Vulkan support!");
+    vd.instance_ = inst_ret.value().instance; // Store the VkInstance
+    vd.dbgMessenger_ = inst_ret.value().debug_messenger; // Store the debug messenger
+
+    LOG(INFO, "Vulkan Instance and Debug Messenger created successfully.");
+    // Surface creation (specific to window systems)
+    CreateSurface(winManager.getHInstance(), winManager.getHwnd(), vd);
+    LOG(INFO, "Win32 Surface created successfully.");
+
+    // Device selection and setup
+    vkb::PhysicalDeviceSelector selector{ inst_ret.value() };
+    auto phys_dev_ret = selector
+        .set_surface(vd.surface_)
+        .set_minimum_version(1, 3) // Require Vulkan 1.3
+        .prefer_gpu_device_type(vkb::PreferredDeviceType::discrete) // Prefer discrete GPUs
+        .select();
+
+    if (!phys_dev_ret) {
+        LOG(ERR, "Failed to select a Vulkan physical device. Error: " + phys_dev_ret.error().message() , __LINE__);
+        return; // Early exit if no suitable device found
     }
+    vd.physicalDevice_ = phys_dev_ret.value().physical_device; // Store the physical device
 
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(vd.instance_, &deviceCount, devices.data());
-
-    // For GPU Info
+    // Store properties for logging
     VkPhysicalDeviceProperties deviceProperties;
-    // Choose the best suitable device (e.g., preferring dedicated GPU)
-    for (const auto& device : devices) {
-        vkGetPhysicalDeviceProperties(device, &deviceProperties);
-        if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-            vd.physicalDevice_ = device;
-            break;
-        }
-    }
+    vkGetPhysicalDeviceProperties(vd.physicalDevice_, &deviceProperties);
 
-    if (vd.physicalDevice_ == VK_NULL_HANDLE) {
-        vd.physicalDevice_ = devices[0]; // Fallback to the first device if no dedicated GPU is found
-    }
-
-    Logger::Log(INFO, "GPU: ", deviceProperties.deviceName);
+    LOG(INFO, "Selected GPU: " + std::string(deviceProperties.deviceName));
 
     std::string driverVersionStr = decodeDriverVersion(deviceProperties.driverVersion, deviceProperties.vendorID);
-    // Assuming driverVersion is a version number you want to display as is
-    Logger::Log(INFO, "Driver Version: ", driverVersionStr);
+    LOG(INFO, "Driver Version: " + driverVersionStr);
 
-    // Decode the Vulkan API version number according to Vulkan's versioning scheme
-    uint32_t apiMajor = VK_VERSION_MAJOR(deviceProperties.apiVersion);
-    uint32_t apiMinor = VK_VERSION_MINOR(deviceProperties.apiVersion);
-    uint32_t apiPatch = VK_VERSION_PATCH(deviceProperties.apiVersion);
-    Logger::Log(INFO, "Vulkan API Version: ", fmt::format("{}.{}.{}", apiMajor, apiMinor, apiPatch));
-
-    // Create a logical device
-    VkDeviceCreateInfo deviceCreateInfo{};
-    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-
-    VkPhysicalDeviceFeatures deviceFeatures{};
-    deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
-
-
-    if (vkCreateDevice(vd.physicalDevice_, &deviceCreateInfo, nullptr, &vd.device_) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create logical device!");
+    // Device features and logical device creation
+    vkb::DeviceBuilder deviceBuilder{ phys_dev_ret.value() };
+    auto dev_ret = deviceBuilder.build();
+    if (!dev_ret) {
+        LOG(ERR, "Failed to create a logical device. Error: " + dev_ret.error().message());
+        return;
     }
-
-    CreateSurface(winManager.getHInstance(), winManager.getHwnd(), vd);
-    Logger::Log(INFO, "Win32 Surface Created!");
+    vd.device_ = dev_ret.value().device; // Store the logical device
 }
 
 

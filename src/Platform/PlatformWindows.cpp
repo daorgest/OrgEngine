@@ -3,8 +3,11 @@
 //
 
 #include "PlatformWindows.h"
+
 namespace Win32
 {
+	// Definition of the static member variable
+	Input WindowManager::input;
 
 	WindowManager::WindowManager() : hwnd_(nullptr), hInstance_(GetModuleHandle(nullptr))
 	{
@@ -17,7 +20,7 @@ namespace Win32
 	{
 		if (hwnd_) {
 			if (!DestroyWindow(hwnd_)) {
-				Logger::Log(ERR, "Failed to destroy window. HWND:", hwnd_);
+				LOG(ERR, "Failed to destroy window. HWND:", hwnd_);
 			}
 			hwnd_ = nullptr;
 		}
@@ -30,32 +33,54 @@ namespace Win32
 	LRESULT CALLBACK WindowManager::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 		LRESULT rez = 0;
 
-		bool pressed;
-
 		switch (msg)
 		{
-		case WM_CLOSE:
-			windowStuff.running = false;
-			break;
 		case WM_SYSKEYDOWN:
 		case WM_KEYDOWN:
+			if (wp < Button::BUTTONS_COUNT) {
+				processEventButton(input.keyboard[wp], true);  // Key NOT pressed
+			}
+			break;
 		case WM_SYSKEYUP:
 		case WM_KEYUP:
-			pressed = (msg == WM_SYSKEYDOWN || msg == WM_KEYDOWN);
-			for (int i = 0; i < Button::BUTTONS_COUNT; i++) {
-				if (wp == Button::buttonValues[i]) {
-					processEventButton(windowStuff.input.keyboard[i], pressed);
-				}
+			if (wp < Button::BUTTONS_COUNT) {
+				processEventButton(input.keyboard[wp], false);  // Key NOT pressed
 			}
-			return DefWindowProc(hwnd, msg, wp, lp);
+			break;
+		case WM_MOUSEMOVE:
+			// Update mouse position
+			input.cursorX = LOWORD(lp);
+			input.cursorY = HIWORD(lp);
+			break;
+		case WM_LBUTTONDOWN:
+			processEventButton(input.lMouseButton, true);
+			break;
+
+		case WM_LBUTTONUP:
+			processEventButton(input.lMouseButton, false);
+			break;
+
+		case WM_RBUTTONDOWN:
+			processEventButton(input.rMouseButton, true);
+			break;
+
+		case WM_RBUTTONUP:
+			processEventButton(input.rMouseButton, false);
+			break;
+
 		case WM_SETFOCUS:
-			windowStuff.input.focused = true;
+			LOG(INFO, "Window in focus");
+			input.focused = true;
 			break;
 
 		case WM_KILLFOCUS:
-			windowStuff.input.focused = false;
+			input.focused = false;
+			resetInput(input);
 			break;
-
+		case WM_CLOSE:
+			windowStuff.running = false;
+			PostQuitMessage(0);
+			break;
 		default:
 			//there are many messages that we didn't treat so we want to call the default window callback for those...
 			rez = DefWindowProc(hwnd, msg, wp, lp);
@@ -65,7 +90,7 @@ namespace Win32
 	}
 
 	// This creates the window class and initiates window creation
-	bool WindowManager::RegisterWindowClass()
+	bool WindowManager::RegisterWindowClass() const
 	{
 		WNDCLASSEX wcex
 		{
@@ -119,28 +144,19 @@ L"OrgEngine - Release",          // Window text (Release version)
 		SetFocus(hwnd_);
 		UpdateWindow(hwnd_);
 
-		Logger::Log(INFO, "Window created successfully. HWND:", hwnd_);
+		LOG(INFO, "Window created successfully. HWND:", hwnd_);
 		return true;
 	}
-
-	void WindowManager::InputHandler()
+	// Definition of the LogInputStates method
+	void WindowManager::LogInputStates() const
 	{
 
-		if (windowStuff.input.keyboard[Button::A].pressed)
+		if (input.keyboard[Button::A].pressed)
 		{
-			std::cout << "Pressed!\n";
+			LOG(INFO, "A has been pressed");
 		}
-
-		//std::cout << (int)windowStuff.input.keyBoard[Button::A].held << "\n";
-
-		//std::cout << (int)windowStuff.input.focused << "\n";
-
-		if (windowStuff.input.keyboard[Button::A].released)
-		{
-			std::cout << "Released!\n";
-		}
-		//
 	}
+
 
 	// Game / App loop
 	void WindowManager::TheMessageLoop() const
@@ -153,16 +169,16 @@ L"OrgEngine - Release",          // Window text (Release version)
 				TranslateMessage(&msg);
 				DispatchMessage(&msg); //call our window callback
 			}
-			InputHandler();
+			LogInputStates();
 
 			// GAME LOOP GOES HERE
 
-			if (!windowStuff.input.focused)
+			if (input.focused)
 			{
-				resetInput(windowStuff.input);
+				resetInput(input);
 			}
 
-			processInputAfter(windowStuff.input);
+			processInputAfter(input);
 		}
 	}
 }

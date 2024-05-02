@@ -2,6 +2,7 @@
 // Created by Orgest on 4/23/2024.
 //
 #include "InputHandler.h"
+#include "../Core/Logger.h"
 
 
 void processInputAfter(Input &input)
@@ -37,10 +38,12 @@ void resetInput(Input &input)
 //newState == 1 means pressed else released
 void processEventButton(Button &b, bool newState)
 {
+	//LOG(INFO, "Processing Event: ", (newState ? "Pressed" : "Released"));
 	if (newState)
 	{
 		if (!b.held)
 		{
+			//LOG(INFO, "Button state changed to Pressed");
 			b.pressed = true;
 			b.held = true;
 			b.released = false;
@@ -48,6 +51,7 @@ void processEventButton(Button &b, bool newState)
 	}
 	else
 	{
+		//LOG(INFO, "Button state changed to Held");
 		b.pressed = false;
 		b.held = false;
 		b.released = true;

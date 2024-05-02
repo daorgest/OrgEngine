@@ -1,30 +1,24 @@
 #pragma once
-#include <cassert>
 #include <chrono>
 #include <iostream>
 #include <fmt/chrono.h>
 #include "fmt/core.h"
+
+#define LOG(level, ...) Logger::Log(level, __FILE__, __LINE__, __VA_ARGS__)
+
 enum LogLevel {
 	INFO = 0,
 	WARN,
-	ERR
+	ERR,
+	DEBUGGING
 };
 
 class Logger
 {
 public:
-
-	// Helper function to convert any type to string using stringstream
-	template<typename T>
-	std::string ToString(const T& value) {
-		std::ostringstream oss;
-		oss << value;
-		return oss.str();
-	}
-
 	// Variadic template function to accept multiple arguments of any type
 	template<typename... Args>
-	static void Log(LogLevel level, Args... args) {
+	static void Log(LogLevel level, const char* file, int line, Args... args) {
 		using namespace std::chrono;
 
 		// Use stringstream to handle different data types
@@ -40,8 +34,16 @@ public:
 		std::string timestamp = fmt::format("{:%m-%d-%Y %I:%M %p}", local_tm);
 		std::string levelString = LogLevelToString(level); // Convert the log level to a string with color
 
+		// Conditionally append file and line information if the log level is ERR
+		std::string fileLineInfo = (level == ERR) ? fmt::format("{}:{}", file, line) : "";
+		std::string message = combinedStream.str();
+
 		// Print formatted log message with color reset immediately after the tag
-		std::cout << fmt::format("[{}] [{}{}] {}\n", timestamp, levelString, "\033[0m", combinedStream.str());
+		if (level == ERR) {
+			std::cout << fmt::format("[{}] [{}{}] {} - {}\n", timestamp, levelString, "\033[0m", fileLineInfo, message);
+		} else {
+			std::cout << fmt::format("[{}] [{}{}] {}\n", timestamp, levelString, "\033[0m", message);
+		}
 	}
 
 private:
@@ -53,8 +55,11 @@ private:
 			return "\033[33mWARN";
 		case ERR:
 			return "\033[31mERROR";
+		case DEBUGGING:
+			return "\033[34mDEBUG";
 		default:
 			return "\033[37mUNKNOWN";
 		}
 	}
 };
+

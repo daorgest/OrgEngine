@@ -52,13 +52,10 @@ namespace GraphicsAPI
 
         void InitVulkan();
         static void CreateSurface(HINSTANCE hInstance, HWND hwnd, VulkanData& vd);
-        void InitVulkanAPI();
         static void SetupDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
         static void PrintAvailableExtensions();
         static std::string decodeDriverVersion(uint32_t driverVersion, uint32_t vendorID);
         static void SetupDebugMessenger();
-        void DestroyVulkanObjects();
-        bool CheckValidationLayerSupport();
         std::vector<const char*> getRequiredExtensions();
     private:
         Win32::WindowManager &winManager;

@@ -12,10 +12,11 @@
 namespace Win32
 {
 
+
     struct WindowStuff
     {
         volatile bool running = true;
-        Input input;
+
     };
 
     struct WindowDimensions
@@ -32,10 +33,10 @@ namespace Win32
         ~WindowManager();
 
         bool CreateAppWindow();
-        static void InputHandler();
+        void LogInputStates() const;
         void TheMessageLoop() const;
         static LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
-        bool RegisterWindowClass();
+        [[nodiscard]] bool RegisterWindowClass() const;
 
         WindowManager(const WindowManager&) = delete;
         WindowManager& operator=(const WindowManager&) = delete;
@@ -44,11 +45,10 @@ namespace Win32
 
         [[nodiscard]] HWND getHwnd() const { return hwnd_; }
         [[nodiscard]] HINSTANCE getHInstance() const { return hInstance_; }
-
-
     private:
         HWND hwnd_;
         HINSTANCE hInstance_;
+        static Input input;  // Static to maintain state across messages
         const wchar_t* appName_ = L"OrgEngine - Vulkan";
         static inline WindowStuff windowStuff;
         static inline WindowDimensions dimensions;
