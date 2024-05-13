@@ -45,7 +45,7 @@ find_package(Vulkan REQUIRED)
 add_subdirectory(libs/fmt)
 add_subdirectory(libs/vk-bootstrap)
 # Include Vulkan headers
-target_include_directories(OrgEngine PRIVATE ${Vulkan_INCLUDE_DIRS})
+target_include_directories(OrgEngine PRIVATE ${Vulkan_INCLUDE_DIRS} "${CMAKE_SOURCE_DIR}/libs/vma/")
 
 # Link
 target_link_libraries(OrgEngine PRIVATE

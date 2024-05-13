@@ -3,8 +3,8 @@
 //
 
 #include "VulkanMain.h"
-
 #include "VkBootstrap.h"
+#include "vk_mem_alloc.h"
 
 #ifndef NDEBUG
 constexpr bool bUseValidationLayers = true;
@@ -13,70 +13,28 @@ constexpr bool bUseValidationLayers = false;
 #endif
 
 using namespace GraphicsAPI;
-
-
-
-VkEngine::VkEngine(Win32::WindowManager& winManager) : winManager(winManager)
+VkEngine::VkEngine(Win32::WindowManager& winManager_) : winManager_(winManager_)
 {
 }
 
 
 VkEngine::~VkEngine()
 {
-    vd.deletionQueue.flush();  // Clean up all Vulkan objects
+    Cleanup();
 }
 
+void VkEngine::Cleanup()
+{
+    if (isInit) {
+        DestroySwapchain();
+        vkDestroySurfaceKHR(vd.instance_, vd.surface_, nullptr);
+        vkDestroyDevice(vd.device_, nullptr);
 
-void VkEngine::SetupDebugMessenger() {
-    if (!bUseValidationLayers) {
-        LOG(INFO, "Validation layers not enabled.");
-        return; // Early exit if validation layers are not enabled
+        vkb::destroy_debug_utils_messenger(vd.instance_, vd.dbgMessenger_);
+        vkDestroyInstance(vd.instance_, nullptr);
+        winManager_.DestroyAppWindow();  // Ensure the window is destroyed
+
     }
-
-    VkDebugUtilsMessengerCreateInfoEXT createInfo{};
-    SetupDebugMessengerCreateInfo(createInfo);
-
-    // The function pointer for creating the debug messenger
-    auto createDebugUtilsMessengerFunc = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(vd.instance_, "vkCreateDebugUtilsMessengerEXT");
-    if (!createDebugUtilsMessengerFunc) {
-        LOG(ERR, "Failed to load vkCreateDebugUtilsMessengerEXT.");
-        return;
-    }
-
-    // Create the debug messenger and handle possible errors
-    if (createDebugUtilsMessengerFunc(vd.instance_, &createInfo, nullptr, &vd.dbgMessenger_) != VK_SUCCESS) {
-        LOG(ERR, "Failed to set up debug messenger!");
-        return;
-    }
-
-    // Add to the deletion queue to ensure it's cleaned up at the end
-    vd.deletionQueue.push_function([=]() {
-        auto destroyDebugUtilsMessengerFunc = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(vd.instance_, "vkDestroyDebugUtilsMessengerEXT");
-        if (destroyDebugUtilsMessengerFunc != nullptr) {
-            destroyDebugUtilsMessengerFunc(vd.instance_, vd.dbgMessenger_, nullptr);
-        } else {
-            LOG(WARN, "Failed to load vkDestroyDebugUtilsMessengerEXT.");
-        }
-    });
-
-    LOG(INFO, "Debug messenger created successfully.");
-}
-
-void VkEngine::SetupDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
-    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-                             VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    createInfo.pfnUserCallback = [](VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT
-        type, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) -> VkBool32
-    {
-        LOG(DEBUGGING, "Validation layer: " + std::string(pCallbackData->pMessage));
-        return VK_FALSE;
-    };
-    createInfo.pUserData = nullptr; // Optional
 }
 
 void VkEngine::PrintAvailableExtensions()
@@ -101,9 +59,7 @@ std::string VkEngine::decodeDriverVersion(uint32_t driverVersion, uint32_t vendo
     std::string versionString;
     if (vendorID == 0x10DE) { // NVIDIA
         versionString = std::to_string((driverVersion >> 22) & 0x3FF) + "." +
-                        std::to_string((driverVersion >> 14) & 0xFF) + "." +
-                        std::to_string((driverVersion >> 6) & 0xFF) + "." +
-                        std::to_string(driverVersion & 0x3F);
+                        std::to_string((driverVersion >> 14) & 0xFF);
     } else if (vendorID == 0x8086) { // Intel
         versionString = std::to_string(driverVersion >> 14) + "." +
                         std::to_string(driverVersion & 0x3FFF);
@@ -137,7 +93,7 @@ void VkEngine::InitVulkan()
 
     LOG(INFO, "Vulkan Instance and Debug Messenger created successfully.");
     // Surface creation (specific to window systems)
-    CreateSurface(winManager.getHInstance(), winManager.getHwnd(), vd);
+    CreateSurface(winManager_.getHInstance(), winManager_.getHwnd(), vd);
     LOG(INFO, "Win32 Surface created successfully.");
 
     // Device selection and setup
@@ -171,6 +127,17 @@ void VkEngine::InitVulkan()
         return;
     }
     vd.device_ = dev_ret.value().device; // Store the logical device
+
+    VmaAllocatorCreateInfo allocInfo
+    {
+        .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+        .physicalDevice = vd.physicalDevice_,
+        .device = vd.device_,
+        .instance = vd.instance_,
+    };
+    vmaCreateAllocator(&allocInfo, &allocator_);
+    LOG(INFO, "VMA Initalized :D");
+    isInit = true;
 }
 
 
@@ -189,6 +156,45 @@ void VkEngine::CreateSurface(HINSTANCE hInstance, HWND hwnd, VulkanData& vd)
         exit(1);
     }
 
+}
+
+void VkEngine::CreateSwapchain(uint32_t width, uint32_t height)
+{
+    vkb::SwapchainBuilder swapchainBuilder{ vd.physicalDevice_,vd.device_, vd.surface_};
+
+    swapchainImageFormat_ = VK_FORMAT_B8G8R8A8_UNORM;
+
+    vkb::Swapchain vkbSwapchain = swapchainBuilder
+        //.use_default_format_selection()
+        .set_desired_format(VkSurfaceFormatKHR{ .format = swapchainImageFormat_ , .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR })
+        //use vsync present mode
+        .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+        .set_desired_extent(width, height)
+        .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        .build()
+        .value();
+
+    swapchainExtent_ = vkbSwapchain.extent;
+    //store swapchain and its related images
+    swapchain_ = vkbSwapchain.swapchain;
+    swapchainImages_ = vkbSwapchain.get_images().value();
+    swapchainImageViews_ = vkbSwapchain.get_image_views().value();
+}
+
+void VkEngine::InitSwapChain()
+{
+    CreateSwapchain(winManager_.GetWidth(), winManager_.GetHeight());
+}
+
+void VkEngine::DestroySwapchain()
+{
+    vkDestroySwapchainKHR(vd.device_, swapchain_, nullptr);
+
+    // destroy swapchain resources
+    for (int i = 0; i < swapchainImageViews_.size(); i++) {
+
+        vkDestroyImageView(vd.device_, swapchainImageViews_[i], nullptr);
+    }
 }
 
 

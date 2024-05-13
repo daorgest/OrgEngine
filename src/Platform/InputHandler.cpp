@@ -5,6 +5,36 @@
 #include "../Core/Logger.h"
 
 
+// TODO: INTEGRATEING THIS
+void Input::updateUsingController() {
+	// Check if any Xbox controller button is pressed or held
+	usingController = false;
+	for (const auto& button : xboxButtons) {
+		if (button.pressed || button.held) {
+			usingController = true;
+			break;
+		}
+	}
+
+	// If no controller input detected, check if any keyboard or mouse button is pressed or held
+	if (!usingController) {
+		for (const auto& key : keyboard) {
+			if (key.pressed || key.held) {
+				return;
+			}
+		}
+
+		if (lMouseButton.pressed || lMouseButton.held ||
+			rMouseButton.pressed || rMouseButton.held ||
+			mouse4Button.pressed || mouse4Button.held ||
+			mouse5Button.pressed || mouse5Button.held) {
+			return;
+			}
+
+		usingController = false;
+	}
+}
+
 void processInputAfter(Input &input)
 {
 	for (int i = 0; i < Button::BUTTONS_COUNT; i++)
@@ -12,6 +42,13 @@ void processInputAfter(Input &input)
 		input.keyboard[i].pressed = 0;
 		input.keyboard[i].released = 0;
 		input.keyboard[i].altWasDown = 0;
+	}
+
+	for (auto& button : input.xboxButtons)
+	{
+		button.pressed = 0;
+		button.released = 0;
+		button.altWasDown = 0;
 	}
 
 	input.lMouseButton.pressed = 0;
@@ -31,7 +68,8 @@ void resetInput(Input &input)
 	input.lMouseButton = {};
 	input.rMouseButton = {};
 
-	ZeroMemory(input.keyboard, sizeof(input.keyboard));
+	ZeroMemory(input.keyboard.data(), input.keyboard.size() * sizeof(Button));
+	ZeroMemory(input.xboxButtons.data(), input.xboxButtons.size() * sizeof(Button));
 	ZeroMemory(input.typedInput, sizeof(input.typedInput));
 }
 

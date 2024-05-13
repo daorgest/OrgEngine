@@ -31,12 +31,13 @@ namespace Win32
 
         WindowManager();
         ~WindowManager();
+        bool DestroyAppWindow();
 
         bool CreateAppWindow();
         void LogInputStates() const;
         void TheMessageLoop() const;
         static LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
-        [[nodiscard]] bool RegisterWindowClass() const;
+        bool RegisterWindowClass() const;
 
         WindowManager(const WindowManager&) = delete;
         WindowManager& operator=(const WindowManager&) = delete;
@@ -45,6 +46,8 @@ namespace Win32
 
         [[nodiscard]] HWND getHwnd() const { return hwnd_; }
         [[nodiscard]] HINSTANCE getHInstance() const { return hInstance_; }
+        [[nodiscard]] int GetWidth() const { return dimensions.screenWidth; }
+        [[nodiscard]] int GetHeight() const { return dimensions.screenHeight;}
     private:
         HWND hwnd_;
         HINSTANCE hInstance_;

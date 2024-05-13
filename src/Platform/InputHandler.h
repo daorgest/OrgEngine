@@ -3,7 +3,28 @@
 #include <windows.h>
 
 
-struct Button {
+enum XboxButton {
+	A = 0,
+	B,
+	X,
+	Y,
+	View,   // Back button
+	Menu,   // Start button
+	BUTTONS_COUNT
+};
+
+enum XboxTriggers : int
+{
+	LeftBumper = 0,
+	RightBumper,
+	LeftTrigger,
+	RightTrigger,
+	LeftStick,
+	RightStick,
+};
+
+struct Button
+{
 	unsigned char pressed = 0;    // True in the first frame it is pressed
 	unsigned char held = 0;       // True while it is pressed
 	unsigned char released = 0;   // True in the frame it is released
@@ -20,7 +41,6 @@ struct Button {
 		Tilde = VK_OEM_3, Quotes = VK_OEM_7, Slash = VK_OEM_5, SquareBracketsOpen = VK_OEM_4, SquareBracketsClose = VK_OEM_6,
 		BUTTONS_COUNT
 	};
-
 };
 
 
@@ -28,7 +48,8 @@ struct Button {
 struct Input
 {
 
-	Button keyboard[Button::BUTTONS_COUNT];
+	std::array<Button, Button::Keys::BUTTONS_COUNT> keyboard;
+	std::array<Button, XboxButton::BUTTONS_COUNT> xboxButtons;
 
 	int cursorX = 0;
 	int cursorY = 0;
@@ -41,6 +62,9 @@ struct Input
 	char typedInput[20] = {};
 
 	bool focused = false;
+	bool usingController = false;
+
+	void updateUsingController();
 };
 
 
