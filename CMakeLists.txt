@@ -37,6 +37,7 @@ file(GLOB_RECURSE SOURCE_FILES "src/*.cpp" )
 # Add source to this project's executable
 add_executable(OrgEngine WIN32 ${SOURCE_FILES}
         src/Core/Logger.h
+        src/Core/PrimTypes.h
 )
 
 # Find Vulkan package
@@ -44,6 +45,7 @@ find_package(Vulkan REQUIRED)
 
 add_subdirectory(libs/fmt)
 add_subdirectory(libs/vk-bootstrap)
+add_subdirectory(libs/DirectXMath)
 # Include Vulkan headers
 target_include_directories(OrgEngine PRIVATE ${Vulkan_INCLUDE_DIRS} "${CMAKE_SOURCE_DIR}/libs/vma/")
 
@@ -52,7 +54,6 @@ target_link_libraries(OrgEngine PRIVATE
         ${Vulkan_LIBRARIES}
         fmt::fmt
         vk-bootstrap::vk-bootstrap
-        User32.lib
 )
 
 

@@ -1,11 +1,18 @@
-
-//#include "../renderer/VulkanMain.h"
-
-#include "../Platform/PlatformWindows.h"  // Include the header for your WindowManager class.
+#include "../Platform/PlatformWindows.h"
 #include "../renderer/VulkanMain.h"
 
 // Color coding for my logs
-void enableVirtualTerminalProcessing() {
+void InitConsole()
+{
+	// Allocate a new console
+	AllocConsole();
+	// Attach standard input, output, and error to the console
+	freopen_s(new FILE*, "CONIN$", "r", stdin);
+	freopen_s(new FILE*, "CONOUT$", "w", stdout);
+	freopen_s(new FILE*, "CONOUT$", "w", stderr);
+
+	std::cout << "Console Output Enabled\n";
+
 	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
 	DWORD dwMode = 0;
 	if (hOut == INVALID_HANDLE_VALUE || !GetConsoleMode(hOut, &dwMode)) return;
@@ -14,25 +21,21 @@ void enableVirtualTerminalProcessing() {
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 {
+#ifdef DEBUG
+	Logger::Init();
+#endif
 	Win32::WindowManager windowManager;
-	GraphicsAPI::VkEngine vk(windowManager);
-	// Allocate a new console
-	AllocConsole();
+	GraphicsAPI::VkEngine vulkanRenderer(&windowManager);
 
-	// Attach standard input, output, and error to the console
-	freopen_s(new FILE*, "CONIN$", "r", stdin);
-	freopen_s(new FILE*, "CONOUT$", "w", stdout);
-	freopen_s(new FILE*, "CONOUT$", "w", stderr);
-	enableVirtualTerminalProcessing();
-
-	std::cout << "Console Output Enabled\n";
-	// Initialize the application instance
+#ifdef DEBUG
+	InitConsole();
+#endif
 
 	windowManager.RegisterWindowClass();
 	windowManager.CreateAppWindow();
-	vk.InitVulkan();
-	// Run the message loop
-	windowManager.TheMessageLoop();
+	vulkanRenderer.Init();
+	// Run the main loop
+	vulkanRenderer.Run();
 
 	std::cin.get();
 	FreeConsole();

@@ -1,23 +1,43 @@
 #pragma once
 #include <chrono>
 #include <iostream>
-#ifndef NDEBUG
+#include <thread>
+#include <sstream>
+#include <cstdarg> // Include for va_start, va_arg, va_end
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 
-#define LOG(level, ...) Logger::Log(level, __FILE__, __LINE__, __VA_ARGS__)
-
-enum LogLevel {
+enum LogLevel
+{
 	INFO,
 	WARN,
 	ERR,
 	DEBUGGING
 };
 
-class Logger {
-public:
+namespace Logger
+{
+	inline void Init()
+	{
+		std::thread initThread([]() {
+			std::cout << "Logger initialized\n";
+		});
+		initThread.join();
+	}
+
+	inline std::string LogLevelToString(LogLevel level) {
+		switch (level) {
+		case INFO:      return "\033[32mINFO";
+		case WARN:      return "\033[33mWARN";
+		case ERR:       return "\033[31mERROR";
+		case DEBUGGING: return "\033[34mDEBUG";
+		default:        return "\033[37mUNKNOWN";
+		}
+	}
+
 	template<typename... Args>
-	static void Log(LogLevel level, const char* file, int line, Args... args) {
+	void Log(LogLevel level, const char* file, int line, Args... args)
+	{
 		std::ostringstream combinedStream;
 		(combinedStream << ... << args);
 
@@ -38,21 +58,10 @@ public:
 			std::cout << fmt::format("[{}] [{}{}] {}\n", timestamp, levelString, "\033[0m", message);
 		}
 	}
-
-private:
-	static std::string LogLevelToString(LogLevel level) {
-		switch (level) {
-		case INFO:      return "\033[32mINFO";
-		case WARN:      return "\033[33mWARN";
-		case ERR:       return "\033[31mERROR";
-		case DEBUGGING: return "\033[34mDEBUG";
-		default:        return "\033[37mUNKNOWN";
-		}
-	}
 };
 
+#ifndef NDEBUG
+#define LOG(level, ...) Logger::Log(level, __FILE__, __LINE__, __VA_ARGS__)
 #else
-
 #define LOG(level, ...) (void)0
-
 #endif // NDEBUG

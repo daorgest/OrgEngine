@@ -4,43 +4,57 @@
 #pragma once
 
 #include    <deque>
+#include    <functional>
 #include	<string>
 #include    <vector>
 #ifdef _WIN32
 #define	VK_USE_PLATFORM_WIN32_KHR
 #endif
-#include <functional>
 #include <vk_mem_alloc.h>
+#include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan.h>
+#include "../Core/PrimTypes.h"
 #include "../Platform/PlatformWindows.h"
+
+#define VK_CHECK(x)                                                     \
+    do {                                                                \
+        VkResult err = x;                                               \
+        if (err) {                                                      \
+             fmt::print("Detected Vulkan error: {}", string_VkResult(err)); \
+            abort();                                                    \
+        }                                                               \
+    } while (0)
 
 namespace GraphicsAPI
 {
-    struct DeletionQueue
-    {
+
+    constexpr unsigned int FRAME_OVERLAP = 2;
+    struct DeletionQueue {
         std::deque<std::function<void()>> deletors;
 
         void push_function(std::function<void()>&& function) {
-            deletors.push_back(function);
+            deletors.emplace_back(std::move(function));
         }
 
         void flush() {
-            // reverse iterate the deletion queue to execute all the functions
+            // Reverse iterate the deletion queue to execute all the functions
             for (auto it = deletors.rbegin(); it != deletors.rend(); ++it) {
-                (*it)(); //call functors
+                (*it)(); // Call functors
             }
 
-            deletors.clear();
+            // Clear the deque by swapping with an empty deque
+            std::deque<std::function<void()>>().swap(deletors);
         }
     };
 
     struct FrameData
     {
+        VkSemaphore swapChainSemaphore_, renderSemaphore_;
+        VkFence renderFence_;
         VkCommandPool commandPool_;
         VkCommandBuffer mainCommandBuffer_;
+        DeletionQueue deletionQueue_;
     };
-
-    constexpr unsigned int FRAME_OVERLAP = 2;
 
     struct VulkanData
     {
@@ -49,7 +63,6 @@ namespace GraphicsAPI
         VkPhysicalDevice physicalDevice_{VK_NULL_HANDLE};
         VkDevice device_{VK_NULL_HANDLE};
         VkSurfaceKHR surface_{VK_NULL_HANDLE};
-        DeletionQueue deletionQueue;
     };
 
     class VkEngine
@@ -58,20 +71,44 @@ namespace GraphicsAPI
 
         bool isInit = false;
 
-        explicit VkEngine(Win32::WindowManager &winManager);
+        VkEngine(Win32::WindowManager *winManager);
         ~VkEngine();
+
+        void Run(); // New method declaration
+        void Init();
+        bool stopRendering_ = false; // New member variable
+
         void Cleanup();
 
         void InitVulkan();
+        void InitCommands();
+        void InitSwapChain();
+        void InitializeCommandPoolsAndBuffers();
+        void CreateSwapchain(u32 width, u32 height);
+        static void CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData& vd);
+        VkCommandPoolCreateInfo CommandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags);
+        VkCommandBufferAllocateInfo CommandBufferAllocateInfo(VkCommandPool pool, uint32_t count);
+        VkCommandBufferBeginInfo CommandBufferBeginInfo(VkCommandBufferUsageFlags flags);
+        VkSemaphoreSubmitInfo SemaphoreSubmitInfo(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore);
+        VkCommandBufferSubmitInfo CommandBufferSubmitInfo(VkCommandBuffer cmd);
+        VkSubmitInfo2 SubmitInfo(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubmitInfo* signalSemaphoreInfo,
+                                 VkSemaphoreSubmitInfo* waitSemaphoreInfo);
+        VkFenceCreateInfo FenceCreateInfo(VkFenceCreateFlags flags) const;
+        VkSemaphoreCreateInfo SemaphoreCreateInfo(VkSemaphoreCreateFlags flags) const;
+        void InitSyncStructures();
+        void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout);
+        VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask) const;
+        void Draw();
 
         // Swapchain management
-        void CreateSwapchain(uint32_t width, uint32_t height);
-        void InitSwapChain();
-        void DestroySwapchain();
+        void DestroySwapchain() const;
 
-    private:
-        VulkanData vd;
-        Win32::WindowManager &winManager_;
+        int frameNumber_ {0};
+        FrameData frames_[FRAME_OVERLAP]{};
+        FrameData& GetCurrentFrame() { return frames_[frameNumber_ % FRAME_OVERLAP]; };
+
+        VkQueue graphicsQueue_{};
+        uint32_t graphicsQueueFamily_{};
 
         // Swapchain properties
         VkSwapchainKHR swapchain_{VK_NULL_HANDLE};
@@ -80,11 +117,14 @@ namespace GraphicsAPI
         std::vector<VkImageView> swapchainImageViews_;
         VkExtent2D swapchainExtent_{};
 
+    private:
+        VulkanData vd;
+        Win32::WindowManager *winManager_;
+
         // Allocator for Vulkan memory
         VmaAllocator allocator_{};
 
         static void PrintAvailableExtensions();
         static std::string decodeDriverVersion(uint32_t driverVersion, uint32_t vendorID);
-        static void CreateSurface(HINSTANCE hInstance, HWND hwnd, VulkanData& vd);
     };
 }
