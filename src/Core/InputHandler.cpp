@@ -1,8 +1,8 @@
 //
 // Created by Orgest on 4/23/2024.
 //
-#include "InputHandler.h"
-#include "../Core/Logger.h"
+#include "../Core/InputHandler.h"
+#include "Logger.h"
 
 
 // TODO: INTEGRATEING THIS

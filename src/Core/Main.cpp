@@ -1,6 +1,8 @@
 #include "../Platform/PlatformWindows.h"
 #include "../renderer/VulkanMain.h"
 
+
+#ifdef _WIN32
 // Color coding for my logs
 void InitConsole()
 {
@@ -42,3 +44,4 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	return 0;
 }
+#endif

@@ -1,9 +1,8 @@
 #pragma once
 #include <chrono>
 #include <iostream>
-#include <thread>
 #include <sstream>
-#include <cstdarg> // Include for va_start, va_arg, va_end
+#include <thread>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 

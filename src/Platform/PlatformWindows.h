@@ -2,40 +2,31 @@
 // Created by Orgest on 4/12/2024.
 //
 
-#ifndef WINDOWS_H
-#define WINDOWS_H
+#pragma once
 
-#include "InputHandler.h"
 #include "../Core/init.h"
-
+#include "../Core/InputHandler.h"
 
 namespace Win32
 {
 
-
-    struct WindowStuff
-    {
-        volatile bool running = true;
-
-    };
-
     struct WindowDimensions
     {
-        int screenWidth     = 1280;
-        int screenHeight    = 720;
+        u32 screenWidth{};
+        u32 screenHeight{};
     };
 
     class WindowManager
     {
     public:
 
-        WindowManager();
+        WindowManager(u32 screenWidth = 0, u32 screenHeight = 0);
         ~WindowManager();
+        void Init();
         bool DestroyAppWindow();
 
         bool CreateAppWindow();
         void LogInputStates() const;
-        void TheMessageLoop() const;
         static LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
         bool RegisterWindowClass() const;
 
@@ -46,17 +37,13 @@ namespace Win32
 
         [[nodiscard]] HWND getHwnd() const { return hwnd_; }
         [[nodiscard]] HINSTANCE getHInstance() const { return hInstance_; }
-        [[nodiscard]] int GetWidth() const { return dimensions.screenWidth; }
-        [[nodiscard]] int GetHeight() const { return dimensions.screenHeight;}
+        [[nodiscard]] u32 GetWidth() const { return dimensions.screenWidth; }
+        [[nodiscard]] u32 GetHeight() const { return dimensions.screenHeight;}
     private:
         HWND hwnd_;
         HINSTANCE hInstance_;
+        WindowDimensions dimensions;
         static Input input;  // Static to maintain state across messages
         const wchar_t* appName_ = L"OrgEngine - Vulkan";
-        static inline WindowStuff windowStuff;
-        static inline WindowDimensions dimensions;
     };
 }
-
-
-#endif //WINDOWS_H
