@@ -34,8 +34,8 @@ add_executable(OrgEngine WIN32 ${SOURCE_FILES})
 # Find Vulkan package
 find_package(Vulkan REQUIRED)
 
-add_subdirectory(3rdParty/fmt)
-add_subdirectory(3rdParty/vk-bootstrap)
+add_subdirectory(libs/3rdParty/fmt)
+add_subdirectory(libs/3rdParty/vk-bootstrap)
 set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/imgui")
 file(GLOB IMGUI_SOURCES
         "${IMGUI_DIR}/*.cpp"

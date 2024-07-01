@@ -1,15 +1,12 @@
-[submodule "3rdParty/vk-bootstrap"]
-	path = 3rdParty/vk-bootstrap
+[submodule "libs/3rdParty/vk-bootstrap"]
+	path = libs/3rdParty/vk-bootstrap
 	url = https://github.com/charles-lunarg/vk-bootstrap
-[submodule "3rdParty/fmt"]
-	path = 3rdParty/fmt
+[submodule "libs/3rdParty/fmt"]
+	path = libs/3rdParty/fmt
 	url = https://github.com/fmtlib/fmt.git
-[submodule "3rdParty/DirectXMath"]
-	path = 3rdParty/DirectXMath
-	url = https://github.com/microsoft/DirectXMath.git
-[submodule "3rdParty/sdl"]
-	path = 3rdParty/sdl
-	url = https://github.com/libsdl-org/SDL.git
-[submodule "3rdParty/imgui"]
-	path = 3rdParty/imgui
+[submodule "libs/3rdParty/imgui"]
+	path = libs/3rdParty/imgui
 	url = https://github.com/ocornut/imgui.git
+[submodule "libs/3rdParty/vma"]
+	path = libs/3rdParty/vma
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
