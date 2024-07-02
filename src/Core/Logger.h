@@ -51,6 +51,8 @@ namespace Logger
 		std::string fileLineInfo = (level == ERR) ? fmt::format("{}:{}", file, line) : "";
 		std::string message = combinedStream.str();
 
+		// std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
 		if (level == ERR) {
 			std::cout << fmt::format("[{}] [{}{}] {} - {}\n", timestamp, levelString, "\033[0m", fileLineInfo, message);
 		} else {

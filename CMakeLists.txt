@@ -35,8 +35,10 @@ add_executable(OrgEngine WIN32 ${SOURCE_FILES})
 find_package(Vulkan REQUIRED)
 
 add_subdirectory(libs/3rdParty/fmt)
+add_subdirectory(libs/3rdParty/glm)
 add_subdirectory(libs/3rdParty/vk-bootstrap)
-set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rdParty/imgui")
+add_subdirectory(libs/3rdParty/vma)
+set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/3rdParty/imgui")
 file(GLOB IMGUI_SOURCES
         "${IMGUI_DIR}/*.cpp"
         "${IMGUI_DIR}/*.h"
@@ -60,6 +62,8 @@ target_link_libraries(OrgEngine PRIVATE
         ${Vulkan_LIBRARIES}
         fmt::fmt
         vk-bootstrap::vk-bootstrap
+        GPUOpen::VulkanMemoryAllocator
+        glm::glm-header-only
 )
 
 target_compile_definitions(OrgEngine PRIVATE

@@ -6,20 +6,26 @@
 
 
 // TODO: INTEGRATEING THIS
-void Input::updateUsingController() {
+void Input::updateUsingController()
+{
 	// Check if any Xbox controller button is pressed or held
 	usingController = false;
-	for (const auto& button : xboxButtons) {
-		if (button.pressed || button.held) {
+	for (const auto& button : xboxButtons)
+	{
+		if (button.pressed || button.held)
+		{
 			usingController = true;
 			break;
 		}
 	}
 
 	// If no controller input detected, check if any keyboard or mouse button is pressed or held
-	if (!usingController) {
-		for (const auto& key : keyboard) {
-			if (key.pressed || key.held) {
+	if (!usingController)
+	{
+		for (const auto& key : keyboard)
+		{
+			if (key.pressed || key.held)
+			{
 				return;
 			}
 		}
@@ -27,15 +33,16 @@ void Input::updateUsingController() {
 		if (lMouseButton.pressed || lMouseButton.held ||
 			rMouseButton.pressed || rMouseButton.held ||
 			mouse4Button.pressed || mouse4Button.held ||
-			mouse5Button.pressed || mouse5Button.held) {
+			mouse5Button.pressed || mouse5Button.held)
+		{
 			return;
-			}
+		}
 
 		usingController = false;
 	}
 }
 
-void processInputAfter(Input &input)
+void processInputAfter(Input& input)
 {
 	for (int i = 0; i < Button::BUTTONS_COUNT; i++)
 	{
@@ -63,7 +70,7 @@ void processInputAfter(Input &input)
 	ZeroMemory(input.typedInput, sizeof(input.typedInput));
 }
 
-void resetInput(Input &input)
+void resetInput(Input& input)
 {
 	input.lMouseButton = {};
 	input.rMouseButton = {};
@@ -74,7 +81,7 @@ void resetInput(Input &input)
 }
 
 //newState == 1 means pressed else released
-void processEventButton(Button &b, bool newState)
+void processEventButton(Button& b, bool newState)
 {
 	//LOG(INFO, "Processing Event: ", (newState ? "Pressed" : "Released"));
 	if (newState)

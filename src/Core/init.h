@@ -9,6 +9,7 @@
 #include <iostream>
 #include <span>
 #include <string>
+#include <thread>
 #include <vector>
 #include "Logger.h"
 #include "PrimTypes.h"

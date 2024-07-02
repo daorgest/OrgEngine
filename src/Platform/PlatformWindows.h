@@ -7,6 +7,7 @@
 #include "../Core/init.h"
 #include "../Core/InputHandler.h"
 
+
 namespace Win32
 {
 
@@ -19,8 +20,7 @@ namespace Win32
     class WindowManager
     {
     public:
-
-        WindowManager(u32 screenWidth = 0, u32 screenHeight = 0);
+        explicit WindowManager(u32 screenWidth = 0, u32 screenHeight = 0);
         ~WindowManager();
         void Init();
         bool DestroyAppWindow();
