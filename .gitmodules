@@ -1,6 +1,6 @@
 [submodule "libs/3rdParty/vk-bootstrap"]
 	path = libs/3rdParty/vk-bootstrap
-	url = https://github.com/charles-lunarg/vk-bootstrap
+	url = https://github.com/charles-lunarg/vk-bootstrap.git
 [submodule "libs/3rdParty/fmt"]
 	path = libs/3rdParty/fmt
 	url = https://github.com/fmtlib/fmt.git
