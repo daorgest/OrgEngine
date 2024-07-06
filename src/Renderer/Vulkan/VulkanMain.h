@@ -12,6 +12,7 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan.h>
+#include <vulkan/vulkan_win32.h>
 #include "backends/imgui_impl_vulkan.h"
 #include "glm/glm.hpp"
 
@@ -19,7 +20,7 @@
     do {                                                                \
         VkResult err = x;                                               \
         if (err) {                                                      \
-            fmt::print("Detected Vulkan error: {}", string_VkResult(err)); \
+            LOG(ERR, "Detected Vulkan error: {}", string_VkResult(err)); \
             abort();                                                    \
         }                                                               \
     } while (0)
@@ -50,12 +51,23 @@ namespace GraphicsAPI
 		}
 	};
 
+
+
 	struct ComputePushConstants
 	{
 		glm::vec4 data1;
 		glm::vec4 data2;
 		glm::vec4 data3;
 		glm::vec4 data4;
+	};
+
+	struct ComputeEffect {
+		const char* name;
+
+		VkPipeline pipeline;
+		VkPipelineLayout layout;
+
+		ComputePushConstants data;
 	};
 
 	struct DescriptorLayoutBuilder
@@ -121,7 +133,7 @@ namespace GraphicsAPI
 		~VkEngine();
 
 		void Run(); // New method declaration
-		void ImGuiMainMenu() const;
+		void ImGuiMainMenu();
 		void InitImgui();
 		void Init();
 		bool stopRendering_ = false; // New member variable
@@ -135,6 +147,11 @@ namespace GraphicsAPI
 		void InitializeCommandPoolsAndBuffers();
 		void InitDescriptors();
 		void InitPipelines();
+		static VkPipelineShaderStageCreateInfo PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage,
+		                                                              VkShaderModule shaderModule);
+		VkComputePipelineCreateInfo ComputePipelineCreateInfo(VkPipelineShaderStageCreateInfo shaderStage,
+		                                                      VkPipelineLayout layout);
+		VkPipelineLayoutCreateInfo CreatePipelineLayoutInfo();
 		void InitBackgroundPipelines();
 		void CreateSwapchain(u32 width, u32 height);
 		static void CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData& vd);
@@ -160,6 +177,7 @@ namespace GraphicsAPI
 		VkRenderingAttachmentInfo AttachmentInfo(VkImageView view, VkClearValue* clear, VkImageLayout layout);
 		void DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView);
 		void DrawBackground(VkCommandBuffer cmd);
+		void DrawGeometry(VkCommandBuffer cmd);
 		void Draw();
 
 		// Swapchain management
@@ -203,6 +221,14 @@ namespace GraphicsAPI
 	private:
 		VulkanData vd;
 		Win32::WindowManager* winManager_;
+		std::vector<ComputeEffect> backgroundEffects;
+		int currentBackgroundEffect_{0};
+
+		// triangle
+		VkPipelineLayout trianglePipelineLayout_{};
+		VkPipeline trianglePipeline_{};
+		void InitTrianglePipeline();
+
 
 		// VkExtent2D windowSize
 		// {

@@ -5,6 +5,7 @@
 #include "VulkanMain.h"
 #include "VkBootstrap.h"
 #include "vk_mem_alloc.h"
+#include "VulkanPipelines.h"
 #include "fmt/color.h"
 
 #ifndef NDEBUG
@@ -79,7 +80,7 @@ void VkEngine::Run()
 	}
 }
 
-void VkEngine::ImGuiMainMenu() const
+void VkEngine::ImGuiMainMenu()
 {
 	if (ImGui::BeginMainMenuBar())
 	{
@@ -98,6 +99,21 @@ void VkEngine::ImGuiMainMenu() const
 
 		ImGui::EndMainMenuBar();
 	}
+
+	if (ImGui::Begin("background"))
+	{
+		ComputeEffect& selected = backgroundEffects[currentBackgroundEffect_];
+
+		ImGui::Text("Selected effect: ", selected.name);
+
+		ImGui::SliderInt("Effect Index", &currentBackgroundEffect_, 0, backgroundEffects.size() - 1);
+
+		ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
+		ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
+		ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
+		ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
+	}
+	ImGui::End();
 }
 
 #pragma endregion Run
@@ -125,7 +141,7 @@ void VkEngine::InitImgui()
 	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	pool_info.maxSets = 1000;
-	pool_info.poolSizeCount = (u32)(std::size(pool_sizes));
+	pool_info.poolSizeCount = static_cast<u32>(std::size(pool_sizes));
 	pool_info.pPoolSizes = pool_sizes;
 
 	VkDescriptorPool imguiPool;
@@ -184,55 +200,6 @@ void VkEngine::Init()
 		InitImgui();
 	}
 }
-
-#pragma region Pipelines
-void VkEngine::InitPipelines()
-{
-	InitBackgroundPipelines();
-}
-
-void VkEngine::InitBackgroundPipelines()
-{
-	VkPipelineLayoutCreateInfo computeLayout{};
-	computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	computeLayout.pNext = nullptr;
-	computeLayout.pSetLayouts = &drawImageDescriptorLayout_;
-	computeLayout.setLayoutCount = 1;
-
-	VK_CHECK(vkCreatePipelineLayout(vd.device_, &computeLayout, nullptr, &gradientPipelineLayout_));
-
-	VkShaderModule computeDrawShader;
-	if (!LoadShader("gradient.comp.spv", vd.device_, &computeDrawShader))
-	{
-		fmt::print("Error when building the compute shader \n");
-	}
-
-	VkPipelineShaderStageCreateInfo stageinfo{};
-	stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	stageinfo.pNext = nullptr;
-	stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	stageinfo.module = computeDrawShader;
-	stageinfo.pName = "main";
-
-	VkComputePipelineCreateInfo computePipelineCreateInfo{};
-	computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	computePipelineCreateInfo.pNext = nullptr;
-	computePipelineCreateInfo.layout = gradientPipelineLayout_;
-	computePipelineCreateInfo.stage = stageinfo;
-
-	VK_CHECK(vkCreateComputePipelines(vd.device_,VK_NULL_HANDLE,1,&computePipelineCreateInfo,
-		nullptr, &gradientPipeline_));
-
-	vkDestroyShaderModule(vd.device_, computeDrawShader, nullptr);
-
-	mainDeletionQueue_.push_function([&]()
-	{
-		vkDestroyPipelineLayout(vd.device_, gradientPipelineLayout_, nullptr);
-		vkDestroyPipeline(vd.device_, gradientPipeline_, nullptr);
-	});
-}
-
-#pragma endregion Pipelines
 
 void VkEngine::InitVulkan()
 {
@@ -884,6 +851,160 @@ VkImageSubresourceRange VkEngine::ImageSubresourceRange(VkImageAspectFlags aspec
 }
 #pragma endregion Image
 
+#pragma region Pipelines
+
+void VkEngine::InitPipelines()
+{
+	InitBackgroundPipelines();
+	InitTrianglePipeline();
+
+}
+
+VkPipelineShaderStageCreateInfo VkEngine::PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage, VkShaderModule shaderModule)
+{
+	VkPipelineShaderStageCreateInfo stageInfo{};
+	stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	stageInfo.pNext = nullptr;
+	stageInfo.stage = stage;
+	stageInfo.module = shaderModule;
+	stageInfo.pName = "main";
+
+	return stageInfo;
+}
+
+VkComputePipelineCreateInfo VkEngine::ComputePipelineCreateInfo(VkPipelineShaderStageCreateInfo shaderStage, VkPipelineLayout layout) {
+	VkComputePipelineCreateInfo computePipelineInfo = {};
+	computePipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+	computePipelineInfo.pNext = nullptr;
+	computePipelineInfo.layout = layout;
+	computePipelineInfo.stage = shaderStage;
+
+	return computePipelineInfo;
+}
+
+VkPipelineLayoutCreateInfo VkEngine::CreatePipelineLayoutInfo()
+{
+	VkPipelineLayoutCreateInfo layout{};
+	layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	layout.pNext = nullptr;
+	layout.pSetLayouts = &drawImageDescriptorLayout_;
+	layout.setLayoutCount = 1;
+
+	return layout;
+}
+void VkEngine::InitBackgroundPipelines()
+{
+	CreatePipelineLayoutInfo();
+
+	VkPipelineLayoutCreateInfo computeLayout{};
+	computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	computeLayout.pNext = nullptr;
+	computeLayout.pSetLayouts = &drawImageDescriptorLayout_;
+	computeLayout.setLayoutCount = 1;
+
+	VkPushConstantRange pushConstant{};
+	pushConstant.offset = 0;
+	pushConstant.size = sizeof(ComputePushConstants);
+	pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+	computeLayout.pPushConstantRanges = &pushConstant;
+	computeLayout.pushConstantRangeCount = 1;
+
+	VK_CHECK(vkCreatePipelineLayout(vd.device_, &computeLayout, nullptr, &gradientPipelineLayout_));
+
+	VkShaderModule gradientShader;
+	if (!LoadShader("gradient_color.comp.spv", vd.device_, &gradientShader)) {
+		fmt::print("Error when building the compute shader \n");
+	}
+
+	VkShaderModule skyShader;
+	if (!LoadShader("sky.comp.spv", vd.device_, &skyShader)) {
+		fmt::print("Error when building the compute shader \n");
+	}
+
+	VkPipelineShaderStageCreateInfo gradientStageInfo = PipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, gradientShader);
+	VkPipelineShaderStageCreateInfo skyStageInfo = PipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, skyShader);
+
+	VkComputePipelineCreateInfo gradientPipelineCreateInfo = ComputePipelineCreateInfo(gradientStageInfo, gradientPipelineLayout_);
+	VkComputePipelineCreateInfo skyPipelineCreateInfo = ComputePipelineCreateInfo(skyStageInfo, gradientPipelineLayout_);
+
+	ComputeEffect gradient{};
+	gradient.layout = gradientPipelineLayout_;
+	gradient.name = "gradient";
+	gradient.data = {};
+	gradient.data.data1 = glm::vec4(1, 0, 0, 1);
+	gradient.data.data2 = glm::vec4(0, 0, 1, 1);
+
+	VK_CHECK(vkCreateComputePipelines(vd.device_, VK_NULL_HANDLE, 1, &gradientPipelineCreateInfo, nullptr, &gradient.pipeline));
+
+	ComputeEffect sky{};
+	sky.layout = gradientPipelineLayout_;
+	sky.name = "sky";
+	sky.data = {};
+	sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
+
+	VK_CHECK(vkCreateComputePipelines(vd.device_, VK_NULL_HANDLE, 1, &skyPipelineCreateInfo, nullptr, &sky.pipeline));
+
+	// add the 2 background effects into the array
+	backgroundEffects.push_back(gradient);
+	backgroundEffects.push_back(sky);
+
+	// destroy structures properly
+	vkDestroyShaderModule(vd.device_, gradientShader, nullptr);
+	vkDestroyShaderModule(vd.device_, skyShader, nullptr);
+
+	mainDeletionQueue_.push_function([&]()
+	{
+		vkDestroyPipelineLayout(vd.device_, gradientPipelineLayout_, nullptr);
+		vkDestroyPipeline(vd.device_, sky.pipeline, nullptr);
+		vkDestroyPipeline(vd.device_, gradient.pipeline, nullptr);
+
+	});
+}
+
+void VkEngine::InitTrianglePipeline()
+{
+	VkShaderModule triangleFragShader;
+	if (!LoadShader("coloredTriangle.frag.spv", vd.device_, &triangleFragShader)) {
+		LOG(ERR, "Error when building the triangle fragment shader module");
+	}
+
+	VkShaderModule triangleVertexShader;
+	if (!LoadShader("coloredTriangle.vert.spv", vd.device_, &triangleVertexShader)) {
+		LOG(ERR, "Error when building the triangle vertex shader module");
+	}
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo = CreatePipelineLayoutInfo();
+	VK_CHECK(vkCreatePipelineLayout(vd.device_, &pipelineLayoutInfo, nullptr, &trianglePipelineLayout_ ));
+
+	PipelineBuilder pipelineBuilder;
+	pipelineBuilder.data.config.layout = trianglePipelineLayout_;
+	pipelineBuilder.SetShaders(triangleVertexShader, triangleFragShader);
+	pipelineBuilder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	pipelineBuilder.SetPolygonMode(VK_POLYGON_MODE_FILL);
+	pipelineBuilder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	pipelineBuilder.SetMultisamplingNone();
+	pipelineBuilder.DisableBlending();
+	pipelineBuilder.DisableDepthTest();
+
+	pipelineBuilder.SetColorAttachmentFormat(drawImage_.imageFormat);
+	pipelineBuilder.SetDepthFormat(VK_FORMAT_UNDEFINED);
+
+	trianglePipeline_ = pipelineBuilder.BuildPipeline(vd.device_, pipelineBuilder.data);
+
+	// clean structures
+	vkDestroyShaderModule(vd.device_, triangleFragShader, nullptr);
+	vkDestroyShaderModule(vd.device_, triangleVertexShader, nullptr);
+
+	mainDeletionQueue_.push_function([&]() {
+		vkDestroyPipelineLayout(vd.device_, trianglePipelineLayout_, nullptr);
+		vkDestroyPipeline(vd.device_, trianglePipeline_, nullptr);
+	});
+}
+
+
+#pragma endregion Pipelines
+
 #pragma region Compute-Shaders
 
 bool VkEngine::LoadShader(const char* filePath, VkDevice device, VkShaderModule* outShaderModule)
@@ -1128,18 +1249,52 @@ void VkEngine::DrawBackground(VkCommandBuffer cmd)
 	// Transition the draw image to GENERAL layout for compute shader
 	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
 
-	// Bind the gradient drawing compute pipeline
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipeline_);
+	ComputeEffect& effect = backgroundEffects[currentBackgroundEffect_];
 
-	// Bind the descriptor set containing the draw image for the compute pipeline
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout_, 0, 1, &drawImageDescriptors_,
-	                        0, nullptr);
+	// bind the background compute pipeline
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 
-	// Execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
+	// bind the descriptor set containing the draw image for the compute pipeline
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout_, 0, 1, &drawImageDescriptors_, 0, nullptr);
+
+	vkCmdPushConstants(cmd, gradientPipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
+	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
 	vkCmdDispatch(cmd, std::ceil(drawExtent_.width / 16.0), std::ceil(drawExtent_.height / 16.0), 1);
-
 	// Transition the draw image back to TRANSFER_SRC_OPTIMAL layout
 	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+}
+
+void VkEngine::DrawGeometry(VkCommandBuffer cmd)
+{
+	VkRenderingAttachmentInfo colorAttachment = AttachmentInfo(drawImage_.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	VkRenderingInfo renderInfo = RenderInfo(drawExtent_, &colorAttachment, nullptr);
+	vkCmdBeginRendering(cmd, &renderInfo);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline_);
+
+	//set dynamic viewport and scissor
+	VkViewport viewport = {};
+	viewport.x = 0;
+	viewport.y = 0;
+	viewport.width = drawExtent_.width;
+	viewport.height = drawExtent_.height;
+	viewport.minDepth = 0.f;
+	viewport.maxDepth = 1.f;
+
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+	VkRect2D scissor = {};
+	scissor.offset.x = 0;
+	scissor.offset.y = 0;
+	scissor.extent.width = drawExtent_.width;
+	scissor.extent.height = drawExtent_.height;
+
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+	//launch a draw command to draw 3 vertices
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	vkCmdEndRendering(cmd);
 }
 
 
@@ -1178,22 +1333,26 @@ void VkEngine::Draw()
 	DrawBackground(cmd);
 
 	// Transition the swapchain image to TRANSFER_DST_OPTIMAL layout
-	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED,
-	                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+	// Draw geometry
+	DrawGeometry(cmd);
+
+	// Transition the draw image and the swapchain image into their correct transfer layouts
+	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// Copy image from drawImage_.image to swapchainImages_[swapchainImageIndex]
 	CopyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], drawExtent_, swapchainExtent_);
 
 	// Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL layout
-	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-	                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	// Draw the ImGui interface
 	DrawImGui(cmd, swapchainImageViews_[swapchainImageIndex]);
 
 	// Transition the swapchain image to PRESENT_SRC_KHR layout
-	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-	                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 	VK_CHECK(vkEndCommandBuffer(cmd));
 

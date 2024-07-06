@@ -29,7 +29,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
 
 # Add source to this project's executable
-add_executable(OrgEngine WIN32 ${SOURCE_FILES})
+add_executable(OrgEngine WIN32 ${SOURCE_FILES}
+        src/Renderer/DirectX11/D3D11Main.h
+        src/Renderer/Vulkan/VulkanPipelines.h)
 
 # Find Vulkan package
 find_package(Vulkan REQUIRED)
@@ -72,7 +74,10 @@ target_compile_definitions(OrgEngine PRIVATE
 
 # Custom function to compile GLSL shaders
 function(add_shaders TARGET SHADER_DIR)
-  file(GLOB_RECURSE SHADER_FILES "${SHADER_DIR}/*.comp")
+  file(GLOB_RECURSE SHADER_FILES
+          "${SHADER_DIR}/*.comp"
+          "${SHADER_DIR}/*.frag"
+          "${SHADER_DIR}/*.vert")
 
   foreach(SHADER_FILE ${SHADER_FILES})
     get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)

@@ -35,15 +35,18 @@ namespace Win32
 	}
 
 
-
-	bool WindowManager::DestroyAppWindow() {
-		if (hwnd_) {
-			if (!DestroyWindow(hwnd_)) {
+	bool WindowManager::DestroyAppWindow()
+	{
+		if (hwnd_)
+		{
+			if (!DestroyWindow(hwnd_))
+			{
 				return false;
 			}
 			hwnd_ = nullptr;
 
-			if (!UnregisterClass(appName_, hInstance_)) {
+			if (!UnregisterClass(appName_, hInstance_))
+			{
 				return false;
 			}
 		}
@@ -51,10 +54,9 @@ namespace Win32
 	}
 
 
-
 	// handling events (like keypresses, rendering)
-	LRESULT CALLBACK WindowManager::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-
+	LRESULT CALLBACK WindowManager::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+	{
 		if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp))
 			return true;
 
@@ -64,14 +66,16 @@ namespace Win32
 		{
 		case WM_SYSKEYDOWN:
 		case WM_KEYDOWN:
-			if (wp < Button::BUTTONS_COUNT) {
-				processEventButton(input.keyboard[wp], true);  // Key pressed
+			if (wp < Button::BUTTONS_COUNT)
+			{
+				processEventButton(input.keyboard[wp], true); // Key pressed
 			}
 			break;
 		case WM_SYSKEYUP:
 		case WM_KEYUP:
-			if (wp < Button::BUTTONS_COUNT) {
-				processEventButton(input.keyboard[wp], false);  // Key NOT pressed
+			if (wp < Button::BUTTONS_COUNT)
+			{
+				processEventButton(input.keyboard[wp], false); // Key NOT pressed
 			}
 			break;
 		case WM_MOUSEMOVE:
@@ -104,7 +108,7 @@ namespace Win32
 			break;
 		default:
 			//there are many messages that we didn't treat so we want to call the default window callback for those...
-				rez = DefWindowProc(hwnd, msg, wp, lp);
+			rez = DefWindowProc(hwnd, msg, wp, lp);
 		}
 
 		return rez;
@@ -138,7 +142,7 @@ namespace Win32
 			0,
 			appName_,
 #ifdef DEBUG
-			L"OrgEngine - Debug",            // Window text (Debug version)
+			L"OrgEngine - Debug", // Window text (Debug version)
 #else
 			L"OrgEngine - Release",          // Window text (Release version)
 #endif
@@ -154,7 +158,8 @@ namespace Win32
 		);
 
 
-		if (!hwnd_) {
+		if (!hwnd_)
+		{
 			MessageBox(nullptr, L"Failed to create window.", L"Error", MB_OK | MB_ICONERROR);
 			return false;
 		}
@@ -172,11 +177,9 @@ namespace Win32
 	// Definition of the LogInputStates method
 	void WindowManager::LogInputStates() const
 	{
-
 		if (input.keyboard[Button::A].pressed)
 		{
 			LOG(INFO, "A has been pressed");
 		}
 	}
 }
-
