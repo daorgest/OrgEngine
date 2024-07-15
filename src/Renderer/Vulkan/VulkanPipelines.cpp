@@ -1,13 +1,34 @@
 #include "VulkanPipelines.h"
 #include "VulkanMain.h"
 
-using namespace GraphicsAPI;
+using namespace GraphicsAPI::Vulkan;
 
 void PipelineBuilder::Clear(PipelineData& data)
 {
-    // Set default values for config
-    data.config = {};
-    data.shaderStages.stages.clear();
+	data.config.inputAssembly = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO
+	};
+
+	data.config.rasterizer = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO
+	};
+
+	data.config.colorBlendAttachment = {};
+
+	data.config.multisampling = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
+	};
+
+	data.config.layout = VK_NULL_HANDLE;
+
+	data.config.depthStencil = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO
+	};
+
+	data.config.renderInfo = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO
+	};
+	data.shaderStages.stages.clear();
 }
 
 VkPipeline PipelineBuilder::BuildPipeline(VkDevice device, const PipelineData& data)

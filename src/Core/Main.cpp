@@ -26,18 +26,19 @@ int main()
 #ifdef DEBUG
 	Logger::Init();
 #endif
-	Win32::WindowManager windowManager;
-	GraphicsAPI::VkEngine vulkanRenderer(&windowManager);
+	Platform::WindowContext windowContext;
+	windowContext.SetDimensions(1280, 720);
+	Platform::Win32 platform(&windowContext);
+
+	GraphicsAPI::Vulkan::VkEngine engine(&windowContext);
 
 #ifdef DEBUG
 	InitConsole();
 #endif
-
-	windowManager.RegisterWindowClass();
-	windowManager.CreateAppWindow();
-	vulkanRenderer.Init();
+	platform.Init();
+	engine.Init();
 	// Run the main loop
-	vulkanRenderer.Run();
+	engine.Run();
 
 	std::cin.get();
 	FreeConsole();

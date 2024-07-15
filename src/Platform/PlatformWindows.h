@@ -4,46 +4,81 @@
 
 #pragma once
 
-#include "../Core/init.h"
 #include "../Core/InputHandler.h"
+#include "../Core/init.h"
 
 
-namespace Win32
+namespace Platform
 {
 
-    struct WindowDimensions
+    // Context (current status)
+    struct WindowContext
     {
+        HWND hwnd{};
+        HINSTANCE hInstance{};
         u32 screenWidth{};
         u32 screenHeight{};
+        bool isFocused{false};
+        bool isFullscreen{false};
+
+        void SetDimensions(u32 width, u32 height)
+        {
+            screenWidth = width;
+            screenHeight = height;
+        }
+
+        void UpdateDimensions()
+        {
+            if (hwnd)
+            {
+                RECT rect;
+                if (GetClientRect(hwnd, &rect))
+                {
+                    screenWidth = static_cast<u32>(rect.right - rect.left);
+                    screenHeight = static_cast<u32>(rect.bottom - rect.top);
+                }
+            }
+        }
+
+        void ToggleFullscreen()
+        {
+            if (isFullscreen)
+            {
+                SetWindowLongPtr(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
+                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, screenWidth, screenHeight, SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                ShowWindow(hwnd, SW_NORMAL);
+            }
+            else
+            {
+                SetWindowLongPtr(hwnd, GWL_STYLE, WS_POPUP);
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                ShowWindow(hwnd, SW_MAXIMIZE);
+            }
+            isFullscreen = !isFullscreen;
+        }
     };
 
-    class WindowManager
+    class Win32
     {
     public:
-        explicit WindowManager(u32 screenWidth = 0, u32 screenHeight = 0);
-        ~WindowManager();
-        void Init();
+        explicit Win32(WindowContext* windowContext);
+        ~Win32();
+        bool Init();
+        static double GetAbsoluteTime();
         bool DestroyAppWindow();
-
-        bool CreateAppWindow();
         void LogInputStates() const;
-        static LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
-        bool RegisterWindowClass() const;
 
-        WindowManager(const WindowManager&) = delete;
-        WindowManager& operator=(const WindowManager&) = delete;
-        WindowManager(WindowManager&&) noexcept = default;
-        WindowManager& operator=(WindowManager&&) noexcept = default;
+        Win32(const Win32&) = delete;
+        Win32& operator=(const Win32&) = delete;
+        Win32(Win32&&) noexcept = default;
+        Win32& operator=(Win32&&) noexcept = default;
 
-        [[nodiscard]] HWND getHwnd() const { return hwnd_; }
-        [[nodiscard]] HINSTANCE getHInstance() const { return hInstance_; }
-        [[nodiscard]] u32 GetWidth() const { return dimensions.screenWidth; }
-        [[nodiscard]] u32 GetHeight() const { return dimensions.screenHeight;}
     private:
-        HWND hwnd_;
-        HINSTANCE hInstance_;
-        WindowDimensions dimensions;
         static Input input;  // Static to maintain state across messages
+        static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+        [[nodiscard]] bool RegisterWindowClass() const;
+
         const wchar_t* appName_ = L"OrgEngine - Vulkan";
+        WindowContext* windowContext_;
     };
 }

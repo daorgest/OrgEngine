@@ -71,7 +71,7 @@ void D3D11Main::DestroySwapdhainResources()
 
 }
 
-void D3D11Main::OnResize(s32 width, s32 height)
+void D3D11Main::OnResize(i32 width, i32 height)
 {
 
 }

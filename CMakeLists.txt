@@ -6,32 +6,24 @@ project("OrgEngine")
 if(MSVC)
   # Release Flags
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /DNDEBUG")
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Ot /GT /arch:AVX2") # WILL REGRET THIS LATER
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Ot /GT /arch:AVX2")
 
   # Debug flags
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Od /ZI /DEBUG")
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<CONFIG:Debug,RelWithDebInfo>,EditAndContinue,ProgramDatabase>")
-elseif(MINGW)
-  # Set MinGW specific flags
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wa,-mbig-obj")
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2")
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Og -g3")
 endif()
 
 # Ensure we are using wide characters on Windows universally
 add_definitions(-DUNICODE -D_UNICODE)
 
-# Set C++ standard to C++20
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Globbing source files
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
 
 # Add source to this project's executable
-add_executable(OrgEngine WIN32 ${SOURCE_FILES}
-        src/Renderer/DirectX11/D3D11Main.h
-        src/Renderer/Vulkan/VulkanPipelines.h)
+add_executable(OrgEngine WIN32 ${SOURCE_FILES})
 
 # Find Vulkan package
 find_package(Vulkan REQUIRED)

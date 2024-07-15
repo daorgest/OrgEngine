@@ -14,9 +14,9 @@ constexpr bool bUseValidationLayers = true;
 constexpr bool bUseValidationLayers = false;
 #endif
 
-using namespace GraphicsAPI;
+using namespace GraphicsAPI::Vulkan;
 
-VkEngine::VkEngine(Win32::WindowManager* winManager) : winManager_(winManager)
+VkEngine::VkEngine(Platform::WindowContext* winManager) : winManager_(winManager)
 {
 	// // if (winManager)
 	//      Init();
@@ -153,7 +153,7 @@ void VkEngine::InitImgui()
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 
-	ImGui_ImplWin32_Init(winManager_->getHwnd());
+	ImGui_ImplWin32_Init(winManager_->hwnd);
 
 	ImGui_ImplVulkan_InitInfo init_info
 	{
@@ -222,7 +222,7 @@ void VkEngine::InitVulkan()
 	vd.dbgMessenger_ = instRet.value().debug_messenger;
 	LOG(INFO, "Vulkan Instance and Debug Messenger created successfully.");
 
-	CreateSurfaceWin32(winManager_->getHInstance(), winManager_->getHwnd(), vd);
+	CreateSurfaceWin32(winManager_->hInstance, winManager_->hwnd, vd);
 	LOG(INFO, "Win32 Surface created successfully.");
 
 	//vulkan 1.3 features
@@ -320,8 +320,8 @@ void VkEngine::Cleanup()
 
 		vkb::destroy_debug_utils_messenger(vd.instance_, vd.dbgMessenger_);
 		vkDestroyInstance(vd.instance_, nullptr);
-		if (winManager_)
-			winManager_->DestroyAppWindow();
+		// if (winManager_)
+		// 	winManager_->DestroyAppWindow();
 	}
 }
 
@@ -429,12 +429,12 @@ void VkEngine::CreateSwapchain(u32 width, u32 height)
 
 void VkEngine::InitSwapChain()
 {
-	CreateSwapchain(winManager_->GetWidth(), winManager_->GetHeight());
+	CreateSwapchain(winManager_->screenWidth, winManager_->screenHeight);
 
 	// draw image size will match the window
 	VkExtent3D drawImageExtent = {
-		winManager_->GetWidth(),
-		winManager_->GetHeight(),
+		winManager_->screenWidth,
+		winManager_->screenWidth,
 		1
 	};
 
@@ -1246,22 +1246,18 @@ void VkEngine::DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView)
 
 void VkEngine::DrawBackground(VkCommandBuffer cmd)
 {
-	// Transition the draw image to GENERAL layout for compute shader
-	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
-
 	ComputeEffect& effect = backgroundEffects[currentBackgroundEffect_];
 
-	// bind the background compute pipeline
+	// Bind the background compute pipeline
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 
-	// bind the descriptor set containing the draw image for the compute pipeline
+	// Bind the descriptor set containing the draw image for the compute pipeline
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, gradientPipelineLayout_, 0, 1, &drawImageDescriptors_, 0, nullptr);
 
 	vkCmdPushConstants(cmd, gradientPipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
-	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
-	vkCmdDispatch(cmd, std::ceil(drawExtent_.width / 16.0), std::ceil(drawExtent_.height / 16.0), 1);
-	// Transition the draw image back to TRANSFER_SRC_OPTIMAL layout
-	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+	// Execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
+	vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(drawExtent_.width / 16.0)), static_cast<uint32_t>(std::ceil(drawExtent_.height / 16.0)), 1);
 }
 
 void VkEngine::DrawGeometry(VkCommandBuffer cmd)
@@ -1300,92 +1296,83 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 
 void VkEngine::Draw()
 {
-	// Wait until the GPU has finished rendering the last frame. Timeout of 1 second
-	VK_CHECK(vkWaitForFences(vd.device_, 1, &GetCurrentFrame().renderFence_, true, 1000000000));
-	GetCurrentFrame().deletionQueue_.flush();
+    // Wait until the GPU has finished rendering the last frame. Timeout of 1 second
+    VK_CHECK(vkWaitForFences(vd.device_, 1, &GetCurrentFrame().renderFence_, true, 1000000000));
+    GetCurrentFrame().deletionQueue_.flush();
 
-	VK_CHECK(vkResetFences(vd.device_, 1, &GetCurrentFrame().renderFence_));
+    VK_CHECK(vkResetFences(vd.device_, 1, &GetCurrentFrame().renderFence_));
 
-	u32 swapchainImageIndex;
-	VK_CHECK(
-		vkAcquireNextImageKHR(vd.device_, swapchain_, 1000000000, GetCurrentFrame().swapChainSemaphore_, nullptr, &
-			swapchainImageIndex));
+    u32 swapchainImageIndex;
+    VK_CHECK(vkAcquireNextImageKHR(vd.device_, swapchain_, 1000000000, GetCurrentFrame().swapChainSemaphore_, nullptr, &swapchainImageIndex));
 
-	// Naming it cmd for shorter writing
-	const VkCommandBuffer cmd = GetCurrentFrame().mainCommandBuffer_;
+    const VkCommandBuffer cmd = GetCurrentFrame().mainCommandBuffer_;
 
-	// Reset the command buffer to begin recording again
-	VK_CHECK(vkResetCommandBuffer(cmd, 0));
+    VK_CHECK(vkResetCommandBuffer(cmd, 0));
 
-	// Begin the command buffer recording
-	VkCommandBufferBeginInfo cmdBeginInfo = CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+    VkCommandBufferBeginInfo cmdBeginInfo = CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-	drawExtent_.width = drawImage_.imageExtent.width;
-	drawExtent_.height = drawImage_.imageExtent.height;
+    drawExtent_.width = drawImage_.imageExtent.width;
+    drawExtent_.height = drawImage_.imageExtent.height;
 
-	// Start the command buffer recording
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-	// Transition the draw image to TRANSFER_SRC_OPTIMAL layout before rendering
-	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	// Transition draw image to GENERAL layout for compute shader
+	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
 	// Draw the background using compute shader
 	DrawBackground(cmd);
 
-	// Transition the swapchain image to TRANSFER_DST_OPTIMAL layout
-	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	// Transition draw image to COLOR_ATTACHMENT_OPTIMAL layout for rendering
+	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	// Draw geometry
 	DrawGeometry(cmd);
 
-	// Transition the draw image and the swapchain image into their correct transfer layouts
-	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	// Transition the draw image to TRANSFER_SRC_OPTIMAL layout for copying
+	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+	// Transition the swapchain image to TRANSFER_DST_OPTIMAL layout for copying
+	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// Copy image from drawImage_.image to swapchainImages_[swapchainImageIndex]
 	CopyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], drawExtent_, swapchainExtent_);
 
-	// Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL layout
+	// Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL layout for rendering
 	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	// Draw the ImGui interface
 	DrawImGui(cmd, swapchainImageViews_[swapchainImageIndex]);
 
-	// Transition the swapchain image to PRESENT_SRC_KHR layout
+	// Transition the swapchain image to PRESENT_SRC_KHR layout for presentation
 	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
-	// Prepare the submission to the queue
-	VkCommandBufferSubmitInfo cmdinfo = CommandBufferSubmitInfo(cmd);
+    VkCommandBufferSubmitInfo cmdinfo = CommandBufferSubmitInfo(cmd);
 
-	VkSemaphoreSubmitInfo waitInfo = SemaphoreSubmitInfo(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-	                                                     GetCurrentFrame().swapChainSemaphore_);
-	VkSemaphoreSubmitInfo signalInfo = SemaphoreSubmitInfo(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
-	                                                       GetCurrentFrame().renderSemaphore_);
+    VkSemaphoreSubmitInfo waitInfo = SemaphoreSubmitInfo(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, GetCurrentFrame().swapChainSemaphore_);
+    VkSemaphoreSubmitInfo signalInfo = SemaphoreSubmitInfo(VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, GetCurrentFrame().renderSemaphore_);
 
-	VkSubmitInfo2 submit = SubmitInfo(&cmdinfo, &signalInfo, &waitInfo);
+    VkSubmitInfo2 submit = SubmitInfo(&cmdinfo, &signalInfo, &waitInfo);
 
-	// Submit command buffer to the queue and execute it
-	VK_CHECK(vkQueueSubmit2(graphicsQueue_, 1, &submit, GetCurrentFrame().renderFence_));
+    VK_CHECK(vkQueueSubmit2(graphicsQueue_, 1, &submit, GetCurrentFrame().renderFence_));
 
-	// Prepare present
-	VkPresentInfoKHR presentInfo_
-	{
-		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-		.pNext = nullptr,
-		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &GetCurrentFrame().renderSemaphore_,
-		.swapchainCount = 1,
-		.pSwapchains = &swapchain_,
-		.pImageIndices = &swapchainImageIndex
-	};
+    VkPresentInfoKHR presentInfo_
+    {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .pNext = nullptr,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &GetCurrentFrame().renderSemaphore_,
+        .swapchainCount = 1,
+        .pSwapchains = &swapchain_,
+        .pImageIndices = &swapchainImageIndex
+    };
 
-	VK_CHECK(vkQueuePresentKHR(graphicsQueue_, &presentInfo_));
+    VK_CHECK(vkQueuePresentKHR(graphicsQueue_, &presentInfo_));
 
-	// Increase the number of frames drawn
-	frameNumber_++;
+    frameNumber_++;
 }
+
 
 
 #pragma endregion Draw

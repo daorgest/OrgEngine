@@ -24,12 +24,12 @@ struct DX11Data
 class D3D11Main
 {
 public:
-	explicit D3D11Main(Win32::WindowManager* winManager);
+	explicit D3D11Main(Platform::Win32* winManager);
 	~D3D11Main() = default;
 
 	bool Init();
 	bool Load();
-	void OnResize(s32 width, s32 height);
+	void OnResize(i32 width, i32 height);
 
 	void Update();
 	void Render();
@@ -37,7 +37,7 @@ public:
 private:
 	DX11Data dData;
 
-	Win32::WindowManager* winManager_;
+	Platform::Win32* winManager_;
 	bool CreateSwapchainResources();
 	void DestroySwapdhainResources();
 };

@@ -25,7 +25,7 @@
         }                                                               \
     } while (0)
 
-namespace GraphicsAPI
+namespace GraphicsAPI::Vulkan
 {
 	constexpr unsigned int FRAME_OVERLAP = 2;
 
@@ -129,7 +129,7 @@ namespace GraphicsAPI
 	public:
 		bool isInit = false;
 
-		explicit VkEngine(Win32::WindowManager* winManager);
+		explicit VkEngine(Platform::WindowContext* winManager);
 		~VkEngine();
 
 		void Run(); // New method declaration
@@ -220,7 +220,7 @@ namespace GraphicsAPI
 
 	private:
 		VulkanData vd;
-		Win32::WindowManager* winManager_;
+		Platform::WindowContext* winManager_;
 		std::vector<ComputeEffect> backgroundEffects;
 		int currentBackgroundEffect_{0};
 

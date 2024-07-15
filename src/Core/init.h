@@ -23,26 +23,38 @@
 #include <Windows.h>
 #endif
 
-#include "imgui.h"
 #include "backends/imgui_impl_win32.h"
+#include "imgui.h"
+
+#define VK_CHECK(x)                                                                                                    \
+	do                                                                                                                 \
+	{                                                                                                                  \
+		VkResult err = x;                                                                                              \
+		if (err)                                                                                                       \
+		{                                                                                                              \
+			LOG(ERR, "Detected Vulkan error: {}", string_VkResult(err));                                               \
+			abort();                                                                                                   \
+		}                                                                                                              \
+	}                                                                                                                  \
+	while (0)
 
 // Export/Import Definitions
 #ifdef ORGEXPORT
-	// Exports
-	#ifdef _MSC_VER
-		#define ORGAPI __declspec(dllexport)
-		#pragma comment(linker, "/subsystem:windows /ENTRY:mainCRTStartup")
-	#else
-		#define ORGAPI __attribute__((visibility("default")))
-	#endif
+// Exports
+#ifdef _MSC_VER
+#define ORGAPI __declspec(dllexport)
+#pragma comment(linker, "/subsystem:windows /ENTRY:mainCRTStartup")
 #else
-	// Imports
-	#ifdef _MSC_VER
-		#define ORGAPI __declspec(dllimport)
-		#pragma comment(linker, "/subsystem:windows /ENTRY:mainCRTStartup")
-	#else
-		#define ORGAPI
-	#endif
+#define ORGAPI __attribute__((visibility("default")))
+#endif
+#else
+// Imports
+#ifdef _MSC_VER
+#define ORGAPI __declspec(dllimport)
+#pragma comment(linker, "/subsystem:windows /ENTRY:mainCRTStartup")
+#else
+#define ORGAPI
+#endif
 #endif
 
 // Encapsulate DirectX includes in a single block

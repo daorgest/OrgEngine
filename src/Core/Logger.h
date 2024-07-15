@@ -8,57 +8,85 @@
 
 enum LogLevel
 {
-	INFO,
-	WARN,
-	ERR,
-	DEBUGGING
+    INFO,
+    WARN,
+    ERR,
+    DEBUGGING
+};
+
+enum DateFormat
+{
+    DATE_FORMAT_12H,
+    DATE_FORMAT_24H
 };
 
 namespace Logger
 {
-	inline void Init()
-	{
-		std::thread initThread([]() {
-			std::cout << "Logger initialized\n";
-		});
-		initThread.join();
-	}
+    inline DateFormat currentDateFormat = DATE_FORMAT_12H;
+    inline bool includeTimestamp = true;
 
-	inline std::string LogLevelToString(LogLevel level) {
-		switch (level) {
-		case INFO:      return "\033[32mINFO";
-		case WARN:      return "\033[33mWARN";
-		case ERR:       return "\033[31mERROR";
-		case DEBUGGING: return "\033[34mDEBUG";
-		default:        return "\033[37mUNKNOWN";
-		}
-	}
+    inline void Init() {
+        std::cout << "Logger initialized\n";
+    }
 
-	template<typename... Args>
-	void Log(LogLevel level, const char* file, int line, Args... args)
-	{
-		std::ostringstream combinedStream;
-		(combinedStream << ... << args);
+  inline const char* LogLevelToString(LogLevel level)
+    {
+        switch (level)
+        {
+            case INFO:      return "\033[32mINFO";
+            case WARN:      return "\033[33mWARN";
+            case ERR:       return "\033[31mERROR";
+            case DEBUGGING: return "\033[34mDEBUG";
+            default:        return "\033[37mUNKNOWN";
+        }
+    }
 
-		auto now = std::chrono::system_clock::now();
-		auto now_c = std::chrono::system_clock::to_time_t(now);
-		std::tm local_tm{};
-		localtime_s(&local_tm, &now_c);
+    inline std::string GetTimestamp()
+    {
+        if (!includeTimestamp)
+			return "";
 
-		std::string timestamp = fmt::format("{:%m-%d-%Y %I:%M %p}", local_tm);
-		std::string levelString = LogLevelToString(level);
+		const auto now = std::chrono::system_clock::now();
+		const auto now_c = std::chrono::system_clock::to_time_t(now);
+        std::tm local_tm{};
+        localtime_s(&local_tm, &now_c);
 
-		std::string fileLineInfo = (level == ERR) ? fmt::format("{}:{}", file, line) : "";
-		std::string message = combinedStream.str();
+        switch (currentDateFormat)
+        {
+            case DATE_FORMAT_12H:
+                return fmt::format("{:%m-%d-%Y %I:%M %p}", local_tm);
+            case DATE_FORMAT_24H:
+                return fmt::format("{:%m-%d-%Y %H:%M}", local_tm);
+            default:
+                return "";
+        }
+    }
 
-		// std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    template<typename... Args>
+    void Log(LogLevel level, const char* file, int line, Args... args)
+    {
+        std::ostringstream combinedStream;
+        (combinedStream << ... << args);
 
-		if (level == ERR) {
-			std::cout << fmt::format("[{}] [{}{}] {} - {}\n", timestamp, levelString, "\033[0m", fileLineInfo, message);
-		} else {
-			std::cout << fmt::format("[{}] [{}{}] {}\n", timestamp, levelString, "\033[0m", message);
-		}
-	}
+        std::string timestamp = GetTimestamp();
+        const char* levelString = LogLevelToString(level);
+
+        if (level == ERR) {
+            std::cout << fmt::format("[{}] [{}{}] {}:{} - {}\n", timestamp, levelString, "\033[0m", file, line, combinedStream.str());
+        } else {
+            std::cout << fmt::format("[{}] [{}{}] {}\n", timestamp, levelString, "\033[0m", combinedStream.str());
+        }
+    }
+
+    inline void SetDateFormat(DateFormat format)
+    {
+        currentDateFormat = format;
+    }
+
+    inline void EnableTimestamp(bool enable)
+    {
+        includeTimestamp = enable;
+    }
 };
 
 #ifndef NDEBUG
