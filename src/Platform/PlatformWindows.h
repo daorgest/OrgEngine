@@ -20,6 +20,7 @@ namespace Platform
         u32 screenHeight{};
         bool isFocused{false};
         bool isFullscreen{false};
+        bool needsSwapchainRecreation{false};
 
         void SetDimensions(u32 width, u32 height)
         {
@@ -55,6 +56,9 @@ namespace Platform
                 ShowWindow(hwnd, SW_MAXIMIZE);
             }
             isFullscreen = !isFullscreen;
+            UpdateDimensions();
+            needsSwapchainRecreation = true;
+            LOG(INFO, "Toggled fullscreen mode. New dimensions: ", screenWidth, "x", screenHeight);
         }
     };
 

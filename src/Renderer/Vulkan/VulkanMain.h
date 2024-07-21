@@ -9,10 +9,12 @@
 #include "../../Platform/PlatformWindows.h"
 #endif
 // Vulkan Includes
+#include "VulkanLoader.h"
+#include "VulkanTypes.h"
+
+
 #include <vk_mem_alloc.h>
-#include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan.h>
-#include <vulkan/vulkan_win32.h>
 #include "backends/imgui_impl_vulkan.h"
 #include "glm/glm.hpp"
 
@@ -162,14 +164,22 @@ namespace GraphicsAPI::Vulkan
 		VkCommandBufferSubmitInfo CommandBufferSubmitInfo(VkCommandBuffer cmd);
 		VkSubmitInfo2 SubmitInfo(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubmitInfo* signalSemaphoreInfo,
 		                         VkSemaphoreSubmitInfo* waitSemaphoreInfo);
-		VkFenceCreateInfo FenceCreateInfo(VkFenceCreateFlags flags) const;
-		VkSemaphoreCreateInfo SemaphoreCreateInfo(VkSemaphoreCreateFlags flags) const;
+		[[nodiscard]] VkFenceCreateInfo FenceCreateInfo(VkFenceCreateFlags flags) const;
+		[[nodiscard]] VkSemaphoreCreateInfo SemaphoreCreateInfo(VkSemaphoreCreateFlags flags) const;
 		void InitSyncStructures();
 		VkImageCreateInfo ImageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
 		VkImageViewCreateInfo ImageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
 		void CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize,
 		                      VkExtent2D dstSize);
-		void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout);
+		AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+		void DestroyBuffer(const AllocatedBuffer &buffer);
+		void CleanupAlloc();
+		GPUMeshBuffers UploadMesh(std::span<u32> indices, std::span<Vertex> vertices);
+		VkDeviceAddress GetBufferDeviceAddress(VkBuffer buffer) const;
+		void *MapBuffer(const AllocatedBuffer &buffer);
+		void UnmapBuffer(const AllocatedBuffer &buffer);
+
+		void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout) const;
 		VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask) const;
 		bool LoadShader(const char* filePath, VkDevice device, VkShaderModule* outShaderModule);
 		VkRenderingInfo RenderInfo(VkExtent2D extent, VkRenderingAttachmentInfo* colorAttachment,
@@ -216,11 +226,24 @@ namespace GraphicsAPI::Vulkan
 
 		void ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
+		VkPipelineLayout meshPipelineLayout_;
+		VkPipeline meshPipeline_;
+
+		GPUMeshBuffers rectangle;
+
+		void InitMeshPipeline();
+		void InitDefaultData();
+
 		DeletionQueue mainDeletionQueue_;
 
 	private:
 		VulkanData vd;
 		Platform::WindowContext* winManager_;
+
+		// asset loading
+		VkLoader loader_;
+		std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+
 		std::vector<ComputeEffect> backgroundEffects;
 		int currentBackgroundEffect_{0};
 
@@ -229,15 +252,8 @@ namespace GraphicsAPI::Vulkan
 		VkPipeline trianglePipeline_{};
 		void InitTrianglePipeline();
 
-
-		// VkExtent2D windowSize
-		// {
-		//     .width = winManager_->GetWidth(),
-		//     .height = winManager_->GetHeight()
-		// };
-
 		// Allocator for Vulkan memory
-		VmaAllocator allocator_{};
+		VmaAllocator allocator_;
 
 		static void PrintAvailableExtensions();
 		static std::string decodeDriverVersion(uint32_t driverVersion, uint32_t vendorID);

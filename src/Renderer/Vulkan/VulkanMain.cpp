@@ -4,9 +4,13 @@
 
 #include "VulkanMain.h"
 #include "VkBootstrap.h"
-#include "vk_mem_alloc.h"
 #include "VulkanPipelines.h"
-#include "fmt/color.h"
+
+#include <vk_mem_alloc.h>
+#include <fmt/color.h>
+
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/transform.hpp>
 
 #ifndef NDEBUG
 constexpr bool bUseValidationLayers = true;
@@ -67,6 +71,7 @@ void VkEngine::Run()
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 			continue;
 		}
+
 		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
@@ -86,39 +91,52 @@ void VkEngine::ImGuiMainMenu()
 	{
 		if (ImGui::BeginMenu("Options"))
 		{
-			if (ImGui::MenuItem("Option 1"))
+			if (ImGui::MenuItem("Toggle Fullscreen"))
 			{
+				winManager_->ToggleFullscreen(); // BREAKS FOR NOW LMAO
+
 			}
 			if (ImGui::MenuItem("Option 2"))
 			{
+				// Action for Option 2
 			}
+
+			// Background effect settings
+			ImGui::Separator();
+			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect_];
+
+			ImGui::Text("Selected effect: %s", selected.name);
+			ImGui::SliderInt("Effect Index", &currentBackgroundEffect_, 0, backgroundEffects.size() - 1);
+			ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
+			ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
+			ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
+			ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
 
 			ImGui::EndMenu();
 		}
-
-
 		ImGui::EndMainMenuBar();
 	}
-
-	if (ImGui::Begin("background"))
-	{
-		ComputeEffect& selected = backgroundEffects[currentBackgroundEffect_];
-
-		ImGui::Text("Selected effect: ", selected.name);
-
-		ImGui::SliderInt("Effect Index", &currentBackgroundEffect_, 0, backgroundEffects.size() - 1);
-
-		ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
-		ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
-		ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
-		ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
-	}
-	ImGui::End();
 }
 
 #pragma endregion Run
 
 #pragma region Initialization
+
+void VkEngine::Init()
+{
+	if (winManager_)
+	{
+		InitVulkan();
+		// SetupDebugMessenger();
+		InitSwapChain();
+		InitCommands();
+		InitSyncStructures();
+		InitDescriptors();
+		InitPipelines();
+		InitDefaultData();
+		InitImgui();
+	}
+}
 
 void VkEngine::InitImgui()
 {
@@ -184,21 +202,6 @@ void VkEngine::InitImgui()
 		ImGui_ImplVulkan_Shutdown();
 		vkDestroyDescriptorPool(vd.device_, imguiPool, nullptr);
 	});
-}
-
-void VkEngine::Init()
-{
-	if (winManager_)
-	{
-		InitVulkan();
-		// SetupDebugMessenger();
-		InitSwapChain();
-		InitCommands();
-		InitSyncStructures();
-		InitDescriptors();
-		InitPipelines();
-		InitImgui();
-	}
 }
 
 void VkEngine::InitVulkan()
@@ -429,52 +432,61 @@ void VkEngine::CreateSwapchain(u32 width, u32 height)
 
 void VkEngine::InitSwapChain()
 {
-	CreateSwapchain(winManager_->screenWidth, winManager_->screenHeight);
+    // Destroy the old swapchain before creating a new one
+    DestroySwapchain();
 
-	// draw image size will match the window
-	VkExtent3D drawImageExtent = {
-		winManager_->screenWidth,
-		winManager_->screenWidth,
-		1
-	};
+    // Recreate surface
+    CreateSurfaceWin32(winManager_->hInstance, winManager_->hwnd, vd);
 
-	// hardcoding the draw format to 32 bit float
-	drawImage_.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT; // LMFAO??????
-	drawImage_.imageExtent = drawImageExtent;
+    CreateSwapchain(winManager_->screenWidth, winManager_->screenHeight);
 
-	VkImageUsageFlags drawImageUsages{};
-	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    // draw image size will match the window
+    VkExtent3D drawImageExtent = {
+        winManager_->screenWidth,
+        winManager_->screenHeight,
+        1
+    };
 
-	VkImageCreateInfo rimg_info = ImageCreateInfo(drawImage_.imageFormat, drawImageUsages, drawImageExtent);
+    // hardcoding the draw format to 32 bit float
+    drawImage_.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT; // LMFAO??????
+    drawImage_.imageExtent = drawImageExtent;
 
-	// for the draw image, we want to allocate it from gpu local memory
-	VmaAllocationCreateInfo rImageAllocInfo = {};
-	rImageAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-	rImageAllocInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VkImageUsageFlags drawImageUsages{};
+    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-	// allocate and create the image
-	vmaCreateImage(allocator_, &rimg_info, &rImageAllocInfo, &drawImage_.image, &drawImage_.allocation, nullptr);
+    VkImageCreateInfo rimg_info = ImageCreateInfo(drawImage_.imageFormat, drawImageUsages, drawImageExtent);
 
-	// build a image-view for the draw image to use for rendering
-	VkImageViewCreateInfo rview_info = ImageViewCreateInfo(drawImage_.imageFormat, drawImage_.image,
-	                                                       VK_IMAGE_ASPECT_COLOR_BIT);
+    // for the draw image, we want to allocate it from gpu local memory
+    VmaAllocationCreateInfo rImageAllocInfo = {};
+    rImageAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    rImageAllocInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	VK_CHECK(vkCreateImageView(vd.device_, &rview_info, nullptr, &drawImage_.imageView));
+    // allocate and create the image
+    vmaCreateImage(allocator_, &rimg_info, &rImageAllocInfo, &drawImage_.image, &drawImage_.allocation, nullptr);
 
-	// add to deletion queues
-	mainDeletionQueue_.push_function([this]()
-	{
-		vkDestroyImageView(vd.device_, drawImage_.imageView, nullptr);
-		vmaDestroyImage(allocator_, drawImage_.image, drawImage_.allocation);
-	});
+    // build a image-view for the draw image to use for rendering
+    VkImageViewCreateInfo rview_info = ImageViewCreateInfo(drawImage_.imageFormat, drawImage_.image,
+                                                           VK_IMAGE_ASPECT_COLOR_BIT);
+
+    VK_CHECK(vkCreateImageView(vd.device_, &rview_info, nullptr, &drawImage_.imageView));
+
+    // add to deletion queues
+    mainDeletionQueue_.push_function([this]()
+    {
+        vkDestroyImageView(vd.device_, drawImage_.imageView, nullptr);
+        vmaDestroyImage(allocator_, drawImage_.image, drawImage_.allocation);
+    });
 }
 
 void VkEngine::DestroySwapchain() const
 {
-	vkDestroySwapchainKHR(vd.device_, swapchain_, nullptr);
+	if (swapchain_ != VK_NULL_HANDLE)
+	{
+		vkDestroySwapchainKHR(vd.device_, swapchain_, nullptr);
+	}
 
 	for (int i = 0; i < swapchainImageViews_.size(); i++)
 	{
@@ -741,7 +753,7 @@ VkImageViewCreateInfo VkEngine::ImageViewCreateInfo(VkFormat format, VkImage ima
 }
 
 void VkEngine::CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize,
-                                VkExtent2D dstSize)
+								VkExtent2D dstSize)
 {
 	VkImageBlit2 blitRegion{.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2, .pNext = nullptr};
 
@@ -763,22 +775,20 @@ void VkEngine::CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage des
 	blitRegion.dstSubresource.layerCount = 1;
 	blitRegion.dstSubresource.mipLevel = 0;
 
-	VkBlitImageInfo2 blitInfo{
-		.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
-		.pNext = nullptr,
-		.srcImage = source,
-		.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		.dstImage = destination,
-		.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		.regionCount = 1,
-		.pRegions = &blitRegion,
-		.filter = VK_FILTER_LINEAR
-	};
+	VkBlitImageInfo2 blitInfo{.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+							  .pNext = nullptr,
+							  .srcImage = source,
+							  .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+							  .dstImage = destination,
+							  .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+							  .regionCount = 1,
+							  .pRegions = &blitRegion,
+							  .filter = VK_FILTER_LINEAR};
 
 	vkCmdBlitImage2(cmd, &blitInfo);
 }
 
-void VkEngine::TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)
+void VkEngine::TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout) const
 {
 	// Determine default pipeline stages and access masks
 	VkPipelineStageFlags2 srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -851,13 +861,126 @@ VkImageSubresourceRange VkEngine::ImageSubresourceRange(VkImageAspectFlags aspec
 }
 #pragma endregion Image
 
+#pragma region Buffer
+
+AllocatedBuffer VkEngine::CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
+{
+	// allocate buffer
+	VkBufferCreateInfo bufferInfo
+	{
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.pNext = nullptr,
+		.size = allocSize,
+		.usage = usage
+	};
+
+	VmaAllocationCreateInfo vmaallocInfo = {};
+	vmaallocInfo.usage = memoryUsage;
+	vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	AllocatedBuffer newBuffer{};
+
+	// allocate the buffer
+	VK_CHECK(vmaCreateBuffer(allocator_, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation,
+		&newBuffer.info));
+
+	// // Assert to check for uninitialized buffer handle
+	// assert(newBuffer.buffer != VK_NULL_HANDLE && "Buffer creation failed: Buffer handle is VK_NULL_HANDLE");
+	// assert(newBuffer.buffer != reinterpret_cast<VkBuffer>(0xcccccccccccccccc) && "Buffer creation failed: Buffer handle is uninitialized (0xcccccccccccccccc)");
+
+	return newBuffer;
+}
+
+void* VkEngine::MapBuffer(const AllocatedBuffer& buffer)
+{
+	void* data;
+	vmaMapMemory(allocator_, buffer.allocation, &data);
+	return data;
+}
+
+void VkEngine::UnmapBuffer(const AllocatedBuffer& buffer)
+{
+	vmaUnmapMemory(allocator_, buffer.allocation);
+}
+
+void VkEngine::DestroyBuffer(const AllocatedBuffer& buffer)
+{
+	vmaDestroyBuffer(allocator_, buffer.buffer, buffer.allocation);
+}
+
+void VkEngine::CleanupAlloc()
+{
+	vmaDestroyAllocator(allocator_);
+}
+
+VkDeviceAddress VkEngine::GetBufferDeviceAddress(VkBuffer buffer) const
+{
+    VkBufferDeviceAddressInfo deviceAddressInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = buffer
+    };
+    return vkGetBufferDeviceAddress(vd.device_, &deviceAddressInfo);
+}
+
+GPUMeshBuffers VkEngine::UploadMesh(std::span<u32> indices, std::span<Vertex> vertices)
+{
+    const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
+    const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
+    const size_t stagingBufferSize = vertexBufferSize + indexBufferSize;
+
+    GPUMeshBuffers newSurface{};
+
+    // Create vertex buffer on GPU
+    newSurface.vertexBuffer = CreateBuffer(vertexBufferSize,
+                                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                                           VMA_MEMORY_USAGE_GPU_ONLY);
+    newSurface.vertexBufferAddress = GetBufferDeviceAddress(newSurface.vertexBuffer.buffer);
+
+    // Create index buffer on GPU
+    newSurface.indexBuffer = CreateBuffer(indexBufferSize,
+                                          VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                          VMA_MEMORY_USAGE_GPU_ONLY);
+
+    // Create staging buffer on CPU (host-visible)
+    AllocatedBuffer stagingBuffer = CreateBuffer(stagingBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+    // Map staging buffer to CPU address space
+    void* mappedData = nullptr;
+    VK_CHECK(vmaMapMemory(allocator_, stagingBuffer.allocation, &mappedData));
+
+    // Copy vertex and index data to staging buffer
+    memcpy(mappedData, vertices.data(), vertexBufferSize);
+    memcpy(static_cast<char*>(mappedData) + vertexBufferSize, indices.data(), indexBufferSize);
+
+    // Unmap the staging buffer
+    vmaUnmapMemory(allocator_, stagingBuffer.allocation);
+
+    // Submit copy commands to transfer data from staging buffer to GPU buffers
+    ImmediateSubmit([&](const VkCommandBuffer cmd) {
+        // Copy vertex data from staging buffer to GPU vertex buffer
+        VkBufferCopy vertexCopy{ 0, 0, vertexBufferSize };
+        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+
+        // Copy index data from staging buffer to GPU index buffer
+        VkBufferCopy indexCopy{ vertexBufferSize, 0, indexBufferSize };
+        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+    });
+
+    // Clean up staging buffer
+    DestroyBuffer(stagingBuffer);
+
+    return newSurface;
+}
+
+#pragma endregion Buffer
+
 #pragma region Pipelines
 
 void VkEngine::InitPipelines()
 {
 	InitBackgroundPipelines();
-	InitTrianglePipeline();
 
+	InitTrianglePipeline();
+	InitMeshPipeline();
 }
 
 VkPipelineShaderStageCreateInfo VkEngine::PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage, VkShaderModule shaderModule)
@@ -913,12 +1036,12 @@ void VkEngine::InitBackgroundPipelines()
 	VK_CHECK(vkCreatePipelineLayout(vd.device_, &computeLayout, nullptr, &gradientPipelineLayout_));
 
 	VkShaderModule gradientShader;
-	if (!LoadShader("gradient_color.comp.spv", vd.device_, &gradientShader)) {
+	if (!LoadShader("shaders/gradient_color.comp.spv", vd.device_, &gradientShader)) {
 		fmt::print("Error when building the compute shader \n");
 	}
 
 	VkShaderModule skyShader;
-	if (!LoadShader("sky.comp.spv", vd.device_, &skyShader)) {
+	if (!LoadShader("shaders/sky.comp.spv", vd.device_, &skyShader)) {
 		fmt::print("Error when building the compute shader \n");
 	}
 
@@ -965,12 +1088,12 @@ void VkEngine::InitBackgroundPipelines()
 void VkEngine::InitTrianglePipeline()
 {
 	VkShaderModule triangleFragShader;
-	if (!LoadShader("coloredTriangle.frag.spv", vd.device_, &triangleFragShader)) {
+	if (!LoadShader("shaders/coloredTriangle.frag.spv", vd.device_, &triangleFragShader)) {
 		LOG(ERR, "Error when building the triangle fragment shader module");
 	}
 
 	VkShaderModule triangleVertexShader;
-	if (!LoadShader("coloredTriangle.vert.spv", vd.device_, &triangleVertexShader)) {
+	if (!LoadShader("shaders/coloredTriangle.vert.spv", vd.device_, &triangleVertexShader)) {
 		LOG(ERR, "Error when building the triangle vertex shader module");
 	}
 
@@ -1002,56 +1125,135 @@ void VkEngine::InitTrianglePipeline()
 	});
 }
 
+void VkEngine::InitMeshPipeline()
+{
+	VkShaderModule triangleFragShader;
+	if (!LoadShader("shaders/coloredTriangle.frag.spv", vd.device_, &triangleFragShader)) {
+		LOG(ERR, "Error when building the triangle fragment shader module");
+	}
+
+	VkShaderModule triangleVertexShader;
+	if (!LoadShader("shaders/coloredTriangleMesh.vert.spv", vd.device_, &triangleVertexShader)) {
+		LOG(ERR, "Error when building the triangle vertex shader module");
+	}
+
+	VkPushConstantRange bufferRange{};
+	bufferRange.offset = 0;
+	bufferRange.size = sizeof(GPUDrawPushConstants);
+	bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo = CreatePipelineLayoutInfo();
+	pipelineLayoutInfo.pPushConstantRanges = &bufferRange;
+	pipelineLayoutInfo.pushConstantRangeCount = 1;
+
+	VK_CHECK(vkCreatePipelineLayout(vd.device_, &pipelineLayoutInfo, nullptr, &meshPipelineLayout_));
+
+	PipelineBuilder pipelineBuilder;
+	pipelineBuilder.data.config.layout = meshPipelineLayout_;
+	pipelineBuilder.SetShaders(triangleVertexShader, triangleFragShader);
+	pipelineBuilder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	pipelineBuilder.SetPolygonMode(VK_POLYGON_MODE_FILL);
+	pipelineBuilder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	pipelineBuilder.SetMultisamplingNone();
+	pipelineBuilder.DisableBlending();
+	pipelineBuilder.DisableDepthTest();
+
+	pipelineBuilder.SetColorAttachmentFormat(drawImage_.imageFormat);
+	pipelineBuilder.SetDepthFormat(VK_FORMAT_UNDEFINED);
+
+	meshPipeline_ = pipelineBuilder.BuildPipeline(vd.device_, pipelineBuilder.data);
+
+	// clean structures
+	vkDestroyShaderModule(vd.device_, triangleFragShader, nullptr);
+	vkDestroyShaderModule(vd.device_, triangleVertexShader, nullptr);
+
+	mainDeletionQueue_.push_function([&]() {
+		vkDestroyPipelineLayout(vd.device_, meshPipelineLayout_, nullptr);
+		vkDestroyPipeline(vd.device_, meshPipeline_, nullptr);
+	});
+}
+
+void VkEngine::InitDefaultData() {
+	std::array<Vertex, 4> rectVertices{};
+
+	rectVertices[0].position = {0.5,-0.5, 0};
+	rectVertices[1].position = {0.5,0.5, 0};
+	rectVertices[2].position = {-0.5,-0.5, 0};
+	rectVertices[3].position = {-0.5,0.5, 0};
+
+	rectVertices[0].color = {0,0, 0,1};
+	rectVertices[1].color = { 0.5,0.5,0.5 ,1};
+	rectVertices[2].color = { 1,0, 0,1 };
+	rectVertices[3].color = { 0,1, 0,1 };
+
+	std::array<u32, 6> rectIndices{};
+
+	rectIndices[0] = 0;
+	rectIndices[1] = 1;
+	rectIndices[2] = 2;
+
+	rectIndices[3] = 2;
+	rectIndices[4] = 1;
+	rectIndices[5] = 3;
+
+	rectangle = UploadMesh(rectIndices, rectVertices);
+
+	//delete the rectangle data on engine shutdown
+	mainDeletionQueue_.push_function([&](){
+		DestroyBuffer(rectangle.indexBuffer);
+		DestroyBuffer(rectangle.vertexBuffer);
+	});
+
+}
 
 #pragma endregion Pipelines
 
 #pragma region Compute-Shaders
 
-bool VkEngine::LoadShader(const char* filePath, VkDevice device, VkShaderModule* outShaderModule)
-{
-	// open the file. With cursor at the end
-	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
+// Function to show error message in a MessageBox
+void ShowErrorMessage(const std::string& message, const std::string& title = "Error") {
+	MessageBoxA(nullptr, message.c_str(), title.c_str(), MB_OK | MB_ICONERROR);
+}
 
-	if (!file.is_open())
-	{
-		return false;
+// Function to read file into a vector of uint32_t
+std::vector<uint32_t> ReadFile(const std::string& filePath) {
+	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
+	if (!file.is_open()) {
+		throw std::runtime_error("Failed to open shader file: " + filePath);
 	}
 
-	// find what the size of the file is by looking up the location of the cursor
-	// because the cursor is at the end, it gives the size directly in bytes
-	size_t fileSize = (size_t)file.tellg();
-
-	// spirv expects the buffer to be on uint32, so make sure to reserve a int
-	// vector big enough for the entire file
+	size_t fileSize = file.tellg();
 	std::vector<uint32_t> buffer(fileSize / sizeof(uint32_t));
 
-	// put file cursor at beginning
 	file.seekg(0);
-
-	// load the entire file into the buffer
-	file.read((char*)buffer.data(), fileSize);
-
-	// now that the file is loaded into the buffer, we can close it
+	file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
 	file.close();
 
-	// create a new shader module, using the buffer we loaded
-	VkShaderModuleCreateInfo createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.pNext = nullptr;
+	return buffer;
+}
 
-	// codeSize has to be in bytes, so multply the ints in the buffer by size of
-	// int to know the real size of the buffer
-	createInfo.codeSize = buffer.size() * sizeof(uint32_t);
-	createInfo.pCode = buffer.data();
+bool VkEngine::LoadShader(const char* filePath, VkDevice device, VkShaderModule* outShaderModule) {
+	try {
+		std::vector<uint32_t> buffer = ReadFile(filePath);
 
-	// check that the creation goes well.
-	VkShaderModule shaderModule;
-	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
-	{
+		VkShaderModuleCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		createInfo.pNext = nullptr;
+		createInfo.codeSize = buffer.size() * sizeof(uint32_t);
+		createInfo.pCode = buffer.data();
+
+		VkShaderModule shaderModule;
+		if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create shader for file: " + std::string(filePath));
+		}
+
+		*outShaderModule = shaderModule;
+		return true;
+	}
+	catch (const std::exception& e) {
+		ShowErrorMessage(e.what());
 		return false;
 	}
-	*outShaderModule = shaderModule;
-	return true;
 }
 
 #pragma endregion Compute-Shaders
@@ -1276,7 +1478,6 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 	viewport.height = drawExtent_.height;
 	viewport.minDepth = 0.f;
 	viewport.maxDepth = 1.f;
-
 	vkCmdSetViewport(cmd, 0, 1, &viewport);
 
 	VkRect2D scissor = {};
@@ -1284,11 +1485,33 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 	scissor.offset.y = 0;
 	scissor.extent.width = drawExtent_.width;
 	scissor.extent.height = drawExtent_.height;
-
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 
 	//launch a draw command to draw 3 vertices
 	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+	// Bind pipeline for the rectangle mesh
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline_);
+
+	GPUDrawPushConstants push_constants{};
+	push_constants.worldMatrix = glm::mat4{ 1.f };
+	push_constants.vertexBuffer = rectangle.vertexBufferAddress;
+
+	vkCmdPushConstants(cmd, meshPipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+
+	vkCmdBindIndexBuffer(cmd, rectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+	// Draw the indexed mesh (rectangle)
+	vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
+
+	testMeshes = loader_.loadGltfMeshes(this,"assets\\basicmesh.glb").value();
+
+	push_constants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
+
+	vkCmdPushConstants(cmd, meshPipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+	vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+	vkCmdDrawIndexed(cmd, testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
 
 	vkCmdEndRendering(cmd);
 }

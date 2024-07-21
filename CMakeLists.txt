@@ -18,6 +18,8 @@ add_definitions(-DUNICODE -D_UNICODE)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_definitions(-DNOMINMAX)
+
 
 # Globbing source files
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
@@ -32,6 +34,7 @@ add_subdirectory(libs/3rdParty/fmt)
 add_subdirectory(libs/3rdParty/glm)
 add_subdirectory(libs/3rdParty/vk-bootstrap)
 add_subdirectory(libs/3rdParty/vma)
+add_subdirectory(libs/3rdParty/fastgltf)
 set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/3rdParty/imgui")
 file(GLOB IMGUI_SOURCES
         "${IMGUI_DIR}/*.cpp"
@@ -46,11 +49,12 @@ target_include_directories(OrgEngine PRIVATE
         ${Vulkan_INCLUDE_DIRS}
         "${CMAKE_SOURCE_DIR}/3rdParty/vma/"
         "${IMGUI_DIR}"
+        libs/3rdParty/stb
 )
 
 # Add ImGui sources to the executable
 target_sources(OrgEngine PRIVATE ${IMGUI_SOURCES})
-
+option(FASTGLTF_COMPILE_AS_CPP20 "Compile FastGLTF as C++20" ON)
 # Link
 target_link_libraries(OrgEngine PRIVATE
         ${Vulkan_LIBRARIES}
@@ -58,6 +62,7 @@ target_link_libraries(OrgEngine PRIVATE
         vk-bootstrap::vk-bootstrap
         GPUOpen::VulkanMemoryAllocator
         glm::glm-header-only
+        fastgltf
 )
 
 target_compile_definitions(OrgEngine PRIVATE
@@ -71,28 +76,54 @@ function(add_shaders TARGET SHADER_DIR)
           "${SHADER_DIR}/*.frag"
           "${SHADER_DIR}/*.vert")
 
+  set(SHADER_OUTPUTS "")
   foreach(SHADER_FILE ${SHADER_FILES})
     get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)
-    set(SHADER_OUTPUT "${CMAKE_BINARY_DIR}/${SHADER_NAME}.spv")
+    set(SHADER_OUTPUT "${CMAKE_BINARY_DIR}/App/shaders/${SHADER_NAME}.spv")
 
     add_custom_command(
             OUTPUT ${SHADER_OUTPUT}
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/App/shaders"
             COMMAND glslc ${SHADER_FILE} -o ${SHADER_OUTPUT}
             DEPENDS ${SHADER_FILE}
             COMMENT "Compiling ${SHADER_NAME} to ${SHADER_OUTPUT}"
     )
 
-    target_sources(${TARGET} PRIVATE ${SHADER_OUTPUT})
+    list(APPEND SHADER_OUTPUTS ${SHADER_OUTPUT})
   endforeach()
+
+  add_custom_target(${TARGET}_Shaders ALL DEPENDS ${SHADER_OUTPUTS})
+  add_dependencies(${TARGET} ${TARGET}_Shaders)
 endfunction()
 
 # Add shader compilation for shaders in 'src/Shaders' directory
 add_shaders(OrgEngine "${CMAKE_CURRENT_SOURCE_DIR}/src/Shaders")
+
+# Function to copy assets
+function(copy_assets TARGET ASSET_DIR OUTPUT_DIR)
+  file(GLOB_RECURSE ASSET_FILES "${ASSET_DIR}/*")
+
+  add_custom_command(
+          TARGET ${TARGET}
+          PRE_BUILD
+          COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}"
+          COMMAND ${CMAKE_COMMAND} -E copy_directory "${ASSET_DIR}" "${OUTPUT_DIR}"
+          COMMENT "Copying assets from ${ASSET_DIR} to ${OUTPUT_DIR}"
+  )
+endfunction()
+
+# Copy assets to the output directory
+copy_assets(OrgEngine "${CMAKE_CURRENT_SOURCE_DIR}/src/Assets" "${CMAKE_BINARY_DIR}/App/assets")
+
+# Set the output directories for the executable and compiled shaders
+set_target_properties(OrgEngine PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/App"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/App"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/App"
+)
 
 # Create a target for compiling shaders
 add_custom_target(Shaders DEPENDS ${SHADER_OUTPUT})
 
 # Add Shaders target as a dependency of OrgEngine
 add_dependencies(OrgEngine Shaders)
-
-# TODO: Add tests and install targets if needed.

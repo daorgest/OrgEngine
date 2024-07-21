@@ -22,14 +22,14 @@ enum DateFormat
 
 namespace Logger
 {
-    inline DateFormat currentDateFormat = DATE_FORMAT_12H;
+    inline DateFormat currentDateFormat = DATE_FORMAT_24H;
     inline bool includeTimestamp = true;
 
     inline void Init() {
         std::cout << "Logger initialized\n";
     }
 
-  inline const char* LogLevelToString(LogLevel level)
+    inline const char* LogLevelToString(LogLevel level)
     {
         switch (level)
         {

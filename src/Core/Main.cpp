@@ -1,6 +1,14 @@
+#include <filesystem>
+
+
 #include "../Platform/PlatformWindows.h"
 #include "../Renderer/Vulkan/VulkanMain.h"
 
+namespace fs = std::filesystem;
+
+std::ofstream logFile;
+std::streambuf* originalCoutBuf = nullptr;
+std::streambuf* originalCerrBuf = nullptr;
 
 #ifdef _WIN32
 // Color coding for my logs
