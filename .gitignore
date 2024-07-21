@@ -68,3 +68,4 @@ cmake-*
 *.obj
 *.mtl
 *.opendb
+/src/Assets/
