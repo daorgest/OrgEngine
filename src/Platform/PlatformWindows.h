@@ -28,17 +28,19 @@ namespace Platform
             screenHeight = height;
         }
 
-        void UpdateDimensions()
-        {
-            if (hwnd)
-            {
+        void GetWindowSize(u32& width, u32& height) const
+		{
+            if (hwnd) {
                 RECT rect;
-                if (GetClientRect(hwnd, &rect))
-                {
-                    screenWidth = static_cast<u32>(rect.right - rect.left);
-                    screenHeight = static_cast<u32>(rect.bottom - rect.top);
+                if (GetClientRect(hwnd, &rect)) {
+                    width = static_cast<u32>(rect.right - rect.left);
+                    height = static_cast<u32>(rect.bottom - rect.top);
                 }
             }
+        }
+
+        void UpdateDimensions() {
+            GetWindowSize(screenWidth, screenHeight);
         }
 
         void ToggleFullscreen()

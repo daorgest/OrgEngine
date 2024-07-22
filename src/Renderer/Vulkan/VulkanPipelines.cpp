@@ -87,34 +87,38 @@ VkPipeline PipelineBuilder::BuildPipeline(VkDevice device, const PipelineData& d
     return pipeline;
 }
 
-void PipelineBuilder::SetShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader)
+PipelineBuilder& PipelineBuilder::SetShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader)
 {
     data.shaderStages.stages.clear();
     data.shaderStages.stages.push_back(
         VkEngine::PipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertexShader));
     data.shaderStages.stages.push_back(
         VkEngine::PipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader));
+	return *this;
 }
 
-void PipelineBuilder::SetInputTopology(VkPrimitiveTopology topology)
+PipelineBuilder& PipelineBuilder::SetInputTopology(VkPrimitiveTopology topology)
 {
     data.config.inputAssembly.topology = topology;
     data.config.inputAssembly.primitiveRestartEnable = VK_FALSE;
+	return *this;
 }
 
-void PipelineBuilder::SetPolygonMode(VkPolygonMode mode)
+PipelineBuilder& PipelineBuilder::SetPolygonMode(VkPolygonMode mode)
 {
     data.config.rasterizer.polygonMode = mode;
     data.config.rasterizer.lineWidth = 1.0f;
+	return *this;
 }
 
-void PipelineBuilder::SetCullMode(VkCullModeFlags cullMode, VkFrontFace frontFace)
+PipelineBuilder& PipelineBuilder::SetCullMode(VkCullModeFlags cullMode, VkFrontFace frontFace)
 {
     data.config.rasterizer.cullMode = cullMode;
     data.config.rasterizer.frontFace = frontFace;
+	return *this;
 }
 
-void PipelineBuilder::SetMultisamplingNone()
+PipelineBuilder& PipelineBuilder::SetMultisamplingNone()
 {
     data.config.multisampling = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
@@ -125,28 +129,32 @@ void PipelineBuilder::SetMultisamplingNone()
         .alphaToCoverageEnable = VK_FALSE,
         .alphaToOneEnable = VK_FALSE
     };
+	return *this;
 }
 
-void PipelineBuilder::DisableBlending()
+PipelineBuilder& PipelineBuilder::DisableBlending()
 {
     data.config.colorBlendAttachment.colorWriteMask =
         VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     data.config.colorBlendAttachment.blendEnable = VK_FALSE;
+	return *this;
 }
 
-void PipelineBuilder::SetColorAttachmentFormat(VkFormat format)
+PipelineBuilder& PipelineBuilder::SetColorAttachmentFormat(VkFormat format)
 {
     data.config.colorAttachmentFormat = format;
     data.config.renderInfo.colorAttachmentCount = 1;
     data.config.renderInfo.pColorAttachmentFormats = &data.config.colorAttachmentFormat;
+	return *this;
 }
 
-void PipelineBuilder::SetDepthFormat(VkFormat format)
+PipelineBuilder& PipelineBuilder::SetDepthFormat(VkFormat format)
 {
     data.config.renderInfo.depthAttachmentFormat = format;
+	return *this;
 }
 
-void PipelineBuilder::DisableDepthTest()
+PipelineBuilder& PipelineBuilder::DisableDepthTest()
 {
     data.config.depthStencil = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
@@ -160,4 +168,52 @@ void PipelineBuilder::DisableDepthTest()
         .minDepthBounds = 0.0f,
         .maxDepthBounds = 1.0f
     };
+	return *this;
 }
+
+PipelineBuilder& PipelineBuilder::EnableDepthTest(bool depthWriteEnable, VkCompareOp op)
+{
+	data.config.depthStencil = {
+		.depthTestEnable = VK_TRUE,
+		.depthWriteEnable = depthWriteEnable,
+		.depthCompareOp = op,
+		.depthBoundsTestEnable = VK_FALSE,
+		.stencilTestEnable = VK_FALSE,
+		.front = {},
+		.back = {},
+		.minDepthBounds = 0.0f,
+		.maxDepthBounds = 1.0f
+	};
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::EnableBlendingAdditive()
+{
+	data.config.colorBlendAttachment = {
+		.blendEnable = VK_TRUE,
+		.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+		.dstColorBlendFactor = VK_BLEND_FACTOR_ONE,
+		.colorBlendOp = VK_BLEND_OP_ADD,
+		.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+		.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+		.alphaBlendOp = VK_BLEND_OP_ADD,
+		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+	};
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::EnableBlendingAlphaBlend()
+{
+	data.config.colorBlendAttachment = {
+		.blendEnable = VK_TRUE,
+		.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+		.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+		.colorBlendOp = VK_BLEND_OP_ADD,
+		.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+		.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+		.alphaBlendOp = VK_BLEND_OP_ADD,
+		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+	};
+	return *this;
+}
+

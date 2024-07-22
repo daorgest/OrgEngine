@@ -135,6 +135,12 @@ namespace GraphicsAPI::Vulkan
 		~VkEngine();
 
 		void Run(); // New method declaration
+		void UpdateFPS();
+		void ResizeSwapchain();
+		void RenderMemoryUsageImGui();
+		void RenderQuickStatsImGui();
+		void RenderMainMenu();
+		void RenderUI();
 		void ImGuiMainMenu();
 		void InitImgui();
 		void Init();
@@ -169,6 +175,8 @@ namespace GraphicsAPI::Vulkan
 		void InitSyncStructures();
 		VkImageCreateInfo ImageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
 		VkImageViewCreateInfo ImageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
+		void CreateImageWithVMA(const VkImageCreateInfo &imageInfo, VkMemoryPropertyFlags memoryPropertyFlags,
+								VkImage &image, VmaAllocation &allocation);
 		void CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize,
 		                      VkExtent2D dstSize);
 		AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
@@ -176,6 +184,7 @@ namespace GraphicsAPI::Vulkan
 		void CleanupAlloc();
 		GPUMeshBuffers UploadMesh(std::span<u32> indices, std::span<Vertex> vertices);
 		VkDeviceAddress GetBufferDeviceAddress(VkBuffer buffer) const;
+		void LogMemoryUsage();
 		void *MapBuffer(const AllocatedBuffer &buffer);
 		void UnmapBuffer(const AllocatedBuffer &buffer);
 
@@ -184,7 +193,8 @@ namespace GraphicsAPI::Vulkan
 		bool LoadShader(const char* filePath, VkDevice device, VkShaderModule* outShaderModule);
 		VkRenderingInfo RenderInfo(VkExtent2D extent, VkRenderingAttachmentInfo* colorAttachment,
 		                           VkRenderingAttachmentInfo* depthAttachment);
-		VkRenderingAttachmentInfo AttachmentInfo(VkImageView view, VkClearValue* clear, VkImageLayout layout);
+		VkRenderingAttachmentInfo AttachmentInfo(VkImageView view, VkClearValue *clear, VkImageLayout layout);
+		VkRenderingAttachmentInfo DepthAttachmentInfo(VkImageView view, VkImageLayout layout);
 		void DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView);
 		void DrawBackground(VkCommandBuffer cmd);
 		void DrawGeometry(VkCommandBuffer cmd);
@@ -209,6 +219,7 @@ namespace GraphicsAPI::Vulkan
 
 		// Draw resources
 		AllocatedImage drawImage_{};
+		AllocatedImage depthImage_;
 		VkExtent2D drawExtent_{};
 
 		DescriptorAllocator globalDescriptorAllocator{};
@@ -239,6 +250,21 @@ namespace GraphicsAPI::Vulkan
 	private:
 		VulkanData vd;
 		Platform::WindowContext* winManager_;
+		Platform::Win32* win32_;
+		float spacing = 5.0f;
+		// Camera and projection parameters
+		glm::vec3 cameraPosition = glm::vec3(0, 0, -5);
+		float fov = 70.0f;
+		float nearPlane = 0.1f;
+		float farPlane = 10000.0f;
+
+
+		std::chrono::time_point<std::chrono::high_resolution_clock> lastFrameTime_;
+		float fps_ = 0.0f;
+		bool resize_requested = false;
+		float renderScale = 1.0f;
+
+		bool meshLoaded_ = false;
 
 		// asset loading
 		VkLoader loader_;
@@ -250,7 +276,6 @@ namespace GraphicsAPI::Vulkan
 		// triangle
 		VkPipelineLayout trianglePipelineLayout_{};
 		VkPipeline trianglePipeline_{};
-		void InitTrianglePipeline();
 
 		// Allocator for Vulkan memory
 		VmaAllocator allocator_;

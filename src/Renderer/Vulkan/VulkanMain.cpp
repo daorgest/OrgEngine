@@ -7,7 +7,6 @@
 #include "VulkanPipelines.h"
 
 #include <vk_mem_alloc.h>
-#include <fmt/color.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/transform.hpp>
@@ -20,7 +19,9 @@ constexpr bool bUseValidationLayers = false;
 
 using namespace GraphicsAPI::Vulkan;
 
-VkEngine::VkEngine(Platform::WindowContext* winManager) : winManager_(winManager)
+VkEngine::VkEngine(Platform::WindowContext *winManager) :
+	depthImage_(), meshPipelineLayout_(nullptr), meshPipeline_(nullptr), rectangle(), winManager_(winManager),
+	win32_(nullptr), allocator_(nullptr)
 {
 	// // if (winManager)
 	//      Init();
@@ -43,13 +44,14 @@ void VkEngine::Run()
 		// Handle events on queue
 		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-
 			if (msg.message == WM_QUIT)
 			{
 				bQuit = true;
+				break;
 			}
+
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
 
 			if (msg.message == WM_SYSCOMMAND)
 			{
@@ -62,49 +64,137 @@ void VkEngine::Run()
 					stopRendering_ = false;
 				}
 			}
+
+			// Handle window size changes
+			if (msg.message == WM_SIZE)
+			{
+				if (msg.wParam != SIZE_MINIMIZED)
+				{
+
+					resize_requested = true;
+				}
+			}
 		}
 
-		// do not draw if we are minimized
+		// If WM_QUIT was received, exit the loop
+		if (bQuit)
+		{
+			break;
+		}
+
+		if (resize_requested)
+			ResizeSwapchain();
+
+		// Do not draw if we are minimized
 		if (stopRendering_)
 		{
-			// throttle the speed to avoid the endless spinning
+			// Throttle the speed to avoid the endless spinning
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 			continue;
 		}
 
+		// Start ImGui new frame
 		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
-
 		ImGui::ShowDemoWindow();
-		ImGuiMainMenu();
-
+		// Render ImGui components
+		RenderUI();
 		ImGui::Render();
 
+		// Draw the frame
 		Draw();
 	}
 }
 
-void VkEngine::ImGuiMainMenu()
-{
-	if (ImGui::BeginMainMenuBar())
-	{
-		if (ImGui::BeginMenu("Options"))
-		{
-			if (ImGui::MenuItem("Toggle Fullscreen"))
-			{
-				winManager_->ToggleFullscreen(); // BREAKS FOR NOW LMAO
+void VkEngine::UpdateFPS() {
+	static double lastFPSTime = win32_->GetAbsoluteTime();
+	double currentFPSTime = win32_->GetAbsoluteTime();
+	double elapsed = currentFPSTime - lastFPSTime;
+	lastFPSTime = currentFPSTime;
+	fps_ = 1.0 / elapsed * 1;
+}
 
+void VkEngine::ResizeSwapchain()
+{
+	vkDeviceWaitIdle(vd.device_);
+
+	DestroySwapchain();
+
+	RECT rect;
+	GetClientRect(winManager_->hwnd, &rect);
+	int width = rect.right - rect.left;
+	int height = rect.bottom - rect.top;
+	swapchainExtent_.width = width;
+	swapchainExtent_.height = height;
+
+	CreateSwapchain(swapchainExtent_.width, swapchainExtent_.height);
+
+	resize_requested = false;
+}
+
+
+void VkEngine::RenderMemoryUsageImGui() {
+	VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
+	vmaGetHeapBudgets(allocator_, budgets);
+
+	ImGui::Text("Memory Budget:");
+	for (uint32_t i = 0; i < 2; ++i) {
+		if (budgets[i].statistics.blockCount > 0) {
+			double usageMB = static_cast<double>(budgets[i].usage) / (1024.0 * 1024.0);
+			double budgetMB = static_cast<double>(budgets[i].budget) / (1024.0 * 1024.0);
+			double blockBytesMB = static_cast<double>(budgets[i].statistics.blockBytes) / (1024.0 * 1024.0);
+			double allocationBytesMB = static_cast<double>(budgets[i].statistics.allocationBytes) / (1024.0 * 1024.0);
+
+			ImGui::Text("Heap %u:", i);
+			ImGui::Text("  Usage: %.2f MB", usageMB);
+			ImGui::Text("  Budget: %.2f MB", budgetMB);
+			ImGui::Text("  Allocations: %u", budgets[i].statistics.allocationCount);
+			ImGui::Text("  Block Bytes: %.2f MB", blockBytesMB);
+			ImGui::Text("  Allocation Bytes: %.2f MB", allocationBytesMB);
+		}
+	}
+}
+
+void VkEngine::RenderQuickStatsImGui() {
+	// Update FPS every 0.6 seconds
+	static double lastFPSTime = win32_->GetAbsoluteTime();
+	double currentFPSTime = win32_->GetAbsoluteTime();
+	if ((currentFPSTime - lastFPSTime) > 0.6) {
+		UpdateFPS();
+		lastFPSTime = currentFPSTime;
+	}
+
+	// Query current resolution
+	u32 width, height;
+	winManager_->GetWindowSize(width, height);
+
+	// Display the stats in a menu on the bottom left
+	ImGui::SetNextWindowPos(ImVec2(10, ImGui::GetIO().DisplaySize.y - 220), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_Always);
+	if (ImGui::Begin("Quick Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
+		ImGui::Text("FPS: %.2f", fps_);
+		ImGui::Text("Window Resolution: %ux%u", width, height);
+		ImGui::Text("Internal Resoultion: %ux%u", drawExtent_.width, drawExtent_.height);
+		RenderMemoryUsageImGui();
+	}
+	ImGui::End();
+}
+
+void VkEngine::RenderMainMenu() {
+	if (ImGui::BeginMainMenuBar()) {
+		if (ImGui::BeginMenu("Options")) {
+			ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.f);
+			if (ImGui::MenuItem("Toggle Fullscreen")) {
+				winManager_->ToggleFullscreen();
 			}
-			if (ImGui::MenuItem("Option 2"))
-			{
-				// Action for Option 2
+			if (ImGui::MenuItem("Option 2")) {
+				// Option 2 action
 			}
 
 			// Background effect settings
 			ImGui::Separator();
 			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect_];
-
 			ImGui::Text("Selected effect: %s", selected.name);
 			ImGui::SliderInt("Effect Index", &currentBackgroundEffect_, 0, backgroundEffects.size() - 1);
 			ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
@@ -116,6 +206,11 @@ void VkEngine::ImGuiMainMenu()
 		}
 		ImGui::EndMainMenuBar();
 	}
+}
+
+void VkEngine::RenderUI() {
+	RenderMainMenu();
+	RenderQuickStatsImGui();
 }
 
 #pragma endregion Run
@@ -135,6 +230,7 @@ void VkEngine::Init()
 		InitPipelines();
 		InitDefaultData();
 		InitImgui();
+		isInit = true;
 	}
 }
 
@@ -170,6 +266,7 @@ void VkEngine::InitImgui()
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
+	io.ConfigDebugIsDebuggerPresent = true;
 
 	ImGui_ImplWin32_Init(winManager_->hwnd);
 
@@ -288,7 +385,6 @@ void VkEngine::InitVulkan()
 	isInit = true;
 }
 
-
 #pragma endregion Initialization
 
 #pragma region Cleanup
@@ -297,34 +393,39 @@ void VkEngine::Cleanup()
 {
 	if (isInit)
 	{
+		vkDeviceWaitIdle(vd.device_);
+
 		for (int i = 0; i < FRAME_OVERLAP; i++)
 		{
-			// Already written from before
-			vkDestroyCommandPool(vd.device_, frames_[i].commandPool_, nullptr);
-
 			// Destroy sync objects
 			vkDestroyFence(vd.device_, frames_[i].renderFence_, nullptr);
 			vkDestroySemaphore(vd.device_, frames_[i].renderSemaphore_, nullptr);
 			vkDestroySemaphore(vd.device_, frames_[i].swapChainSemaphore_, nullptr);
 
 			frames_[i].deletionQueue_.flush();
+			vkDestroyCommandPool(vd.device_, frames_[i].commandPool_, nullptr);
+		}
+
+		for (const auto &mesh : testMeshes)
+		{
+			DestroyBuffer(mesh->meshBuffers.indexBuffer);
+			DestroyBuffer(mesh->meshBuffers.vertexBuffer);
 		}
 
 		mainDeletionQueue_.flush();
-
-		vkDeviceWaitIdle(vd.device_);
-		for (int i = 0; i < FRAME_OVERLAP; i++)
-		{
-			vkDestroyCommandPool(vd.device_, frames_[i].commandPool_, nullptr);
-		}
 		DestroySwapchain();
 		vkDestroySurfaceKHR(vd.instance_, vd.surface_, nullptr);
 		vkDestroyDevice(vd.device_, nullptr);
-
 		vkb::destroy_debug_utils_messenger(vd.instance_, vd.dbgMessenger_);
 		vkDestroyInstance(vd.instance_, nullptr);
-		// if (winManager_)
-		// 	winManager_->DestroyAppWindow();
+
+		// Call the DestroyAppWindow method to destroy the Win32 window
+		if (win32_)
+		{
+			win32_->DestroyAppWindow();
+		}
+
+		isInit = false;
 	}
 }
 
@@ -387,7 +488,7 @@ void VkEngine::CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData& vd
 	{
 		MessageBox(nullptr, L"HWND is null! Cannot create Vulkan surface.",
 		           L"Error", MB_OK | MB_ICONERROR);
-		exit(1); // Or handle the error appropriately
+		exit(1);
 	}
 	VkWin32SurfaceCreateInfoKHR createInfo{
 		.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
@@ -428,6 +529,7 @@ void VkEngine::CreateSwapchain(u32 width, u32 height)
 	swapchain_ = vkbSwapchain.swapchain;
 	swapchainImages_ = vkbSwapchain.get_images().value();
 	swapchainImageViews_ = vkbSwapchain.get_image_views().value();
+	LOG(INFO, "Swapchain created/recreated, Resolution: ", width, "x" , height);
 }
 
 void VkEngine::InitSwapChain()
@@ -457,28 +559,34 @@ void VkEngine::InitSwapChain()
     drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
     drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    VkImageCreateInfo rimg_info = ImageCreateInfo(drawImage_.imageFormat, drawImageUsages, drawImageExtent);
 
-    // for the draw image, we want to allocate it from gpu local memory
-    VmaAllocationCreateInfo rImageAllocInfo = {};
-    rImageAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-    rImageAllocInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	VkImageCreateInfo drawImageInfo = ImageCreateInfo(drawImage_.imageFormat, drawImageUsages, drawImageExtent);
+	CreateImageWithVMA(drawImageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, drawImage_.image, drawImage_.allocation);
 
-    // allocate and create the image
-    vmaCreateImage(allocator_, &rimg_info, &rImageAllocInfo, &drawImage_.image, &drawImage_.allocation, nullptr);
+	VkImageViewCreateInfo drawImageViewInfo = ImageViewCreateInfo(drawImage_.imageFormat, drawImage_.image, VK_IMAGE_ASPECT_COLOR_BIT);
+	VK_CHECK(vkCreateImageView(vd.device_, &drawImageViewInfo, nullptr, &drawImage_.imageView));
 
-    // build a image-view for the draw image to use for rendering
-    VkImageViewCreateInfo rview_info = ImageViewCreateInfo(drawImage_.imageFormat, drawImage_.image,
-                                                           VK_IMAGE_ASPECT_COLOR_BIT);
+	// Set up depth image
+	depthImage_.imageFormat = VK_FORMAT_D32_SFLOAT;
+	depthImage_.imageExtent = drawImageExtent;
 
-    VK_CHECK(vkCreateImageView(vd.device_, &rview_info, nullptr, &drawImage_.imageView));
+	VkImageUsageFlags depthImageUsages{};
+	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	VkImageCreateInfo depthImageInfo = ImageCreateInfo(depthImage_.imageFormat, depthImageUsages, drawImageExtent);
+	CreateImageWithVMA(depthImageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage_.image, depthImage_.allocation);
 
-    // add to deletion queues
-    mainDeletionQueue_.push_function([this]()
-    {
-        vkDestroyImageView(vd.device_, drawImage_.imageView, nullptr);
-        vmaDestroyImage(allocator_, drawImage_.image, drawImage_.allocation);
-    });
+	VkImageViewCreateInfo depthImageViewInfo = ImageViewCreateInfo(depthImage_.imageFormat, depthImage_.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+	VK_CHECK(vkCreateImageView(vd.device_, &depthImageViewInfo, nullptr, &depthImage_.imageView));
+
+	// Add cleanup to deletion queue
+	mainDeletionQueue_.push_function([this]()
+	{
+		vkDestroyImageView(vd.device_, drawImage_.imageView, nullptr);
+		vmaDestroyImage(allocator_, drawImage_.image, drawImage_.allocation);
+
+		vkDestroyImageView(vd.device_, depthImage_.imageView, nullptr);
+		vmaDestroyImage(allocator_, depthImage_.image, depthImage_.allocation);
+	});
 }
 
 void VkEngine::DestroySwapchain() const
@@ -551,40 +659,38 @@ void VkEngine::InitializeCommandPoolsAndBuffers()
 
 VkCommandPoolCreateInfo VkEngine::CommandPoolCreateInfo(u32 queueFamilyIndex, VkCommandPoolCreateFlags flags /*=0*/)
 {
-	const VkCommandPoolCreateInfo info
+	return
 	{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = flags,
 		.queueFamilyIndex = queueFamilyIndex
-	};
-	return info;
+	};;
 }
 
 VkCommandBufferAllocateInfo VkEngine::CommandBufferAllocateInfo(VkCommandPool pool, u32 count /*= 1*/)
 {
-	VkCommandBufferAllocateInfo info
+	return
 	{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-		.pNext = nullptr
+		.pNext = nullptr,
+		.commandPool = pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = count
 	};
 
-	info.commandPool = pool;
-	info.commandBufferCount = count;
-	info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	return info;
 }
 
 VkCommandBufferBeginInfo VkEngine::CommandBufferBeginInfo(VkCommandBufferUsageFlags flags /*= 0*/)
 {
-	VkCommandBufferBeginInfo info
+
+	return
 	{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.pNext = nullptr,
 		.flags = flags,
 		.pInheritanceInfo = nullptr
 	};
-	return info;
 }
 
 #pragma endregion Command Pool
@@ -635,26 +741,22 @@ VkSubmitInfo2 VkEngine::SubmitInfo(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSu
 
 VkFenceCreateInfo VkEngine::FenceCreateInfo(VkFenceCreateFlags flags /*=0*/) const
 {
-	const VkFenceCreateInfo info
+	return
 	{
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = flags
-	};
-
-	return info;
+	};;
 }
 
 VkSemaphoreCreateInfo VkEngine::SemaphoreCreateInfo(VkSemaphoreCreateFlags flags /*= 0*/) const
 {
-	const VkSemaphoreCreateInfo info
+	return
 	{
 		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = flags
 	};
-
-	return info;
 }
 
 void VkEngine::InitSyncStructures()
@@ -713,7 +815,7 @@ void VkEngine::ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& functi
 
 VkImageCreateInfo VkEngine::ImageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent)
 {
-	VkImageCreateInfo info
+	return
 	{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.pNext = nullptr,
@@ -726,13 +828,11 @@ VkImageCreateInfo VkEngine::ImageCreateInfo(VkFormat format, VkImageUsageFlags u
 		.tiling = VK_IMAGE_TILING_OPTIMAL,
 		.usage = usageFlags
 	};
-
-	return info;
 }
 
 VkImageViewCreateInfo VkEngine::ImageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags)
 {
-	VkImageViewCreateInfo info
+	return
 	{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 		.pNext = nullptr,
@@ -749,8 +849,17 @@ VkImageViewCreateInfo VkEngine::ImageViewCreateInfo(VkFormat format, VkImage ima
 			.layerCount = 1
 		}
 	};
-	return info;
 }
+
+void VkEngine::CreateImageWithVMA(const VkImageCreateInfo& imageInfo, VkMemoryPropertyFlags memoryPropertyFlags, VkImage& image, VmaAllocation& allocation)
+{
+	VmaAllocationCreateInfo allocInfo = {};
+	allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	allocInfo.requiredFlags = memoryPropertyFlags;
+
+	VK_CHECK(vmaCreateImage(allocator_, &imageInfo, &allocInfo, &image, &allocation, nullptr));
+}
+
 
 void VkEngine::CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize,
 								VkExtent2D dstSize)
@@ -790,57 +899,28 @@ void VkEngine::CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage des
 
 void VkEngine::TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout) const
 {
-	// Determine default pipeline stages and access masks
-	VkPipelineStageFlags2 srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-	VkAccessFlags2 srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
-	VkPipelineStageFlags2 dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-	VkAccessFlags2 dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+	VkImageMemoryBarrier2 imageBarrier {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+	imageBarrier.pNext = nullptr;
 
-	// Optimize pipeline stages and access masks based on specific layout transitions
-	if (currentLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-	{
-		// Transition from undefined layout to transfer destination optimal layout
-		srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-		srcAccessMask = 0;
-		dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-		dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-	}
-	else if (currentLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout ==
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-	{
-		// Transition from transfer destination optimal layout to shader read-only optimal layout
-		srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-		srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-		dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-		dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-	}
-	else if (currentLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout ==
-		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-	{
-		// Transition from undefined layout to depth/stencil attachment optimal layout
-		srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-		srcAccessMask = 0;
-		dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
-		dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-	}
+	imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+	imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
 
-	// Create image memory barrier to manage image layout transition
-	VkImageMemoryBarrier2 imageBarrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-	imageBarrier.srcStageMask = srcStageMask;
-	imageBarrier.srcAccessMask = srcAccessMask;
-	imageBarrier.dstStageMask = dstStageMask;
-	imageBarrier.dstAccessMask = dstAccessMask;
 	imageBarrier.oldLayout = currentLayout;
 	imageBarrier.newLayout = newLayout;
-	imageBarrier.image = image;
-	imageBarrier.subresourceRange = ImageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
 
-	// Create dependency info to include the image barrier
-	VkDependencyInfo depInfo = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+	VkImageAspectFlags aspectMask = (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+	imageBarrier.subresourceRange = ImageSubresourceRange(aspectMask);
+	imageBarrier.image = image;
+
+	VkDependencyInfo depInfo {};
+	depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	depInfo.pNext = nullptr;
+
 	depInfo.imageMemoryBarrierCount = 1;
 	depInfo.pImageMemoryBarriers = &imageBarrier;
 
-	// Record pipeline barrier command in the specified command buffer
 	vkCmdPipelineBarrier2(cmd, &depInfo);
 }
 
@@ -979,7 +1059,6 @@ void VkEngine::InitPipelines()
 {
 	InitBackgroundPipelines();
 
-	InitTrianglePipeline();
 	InitMeshPipeline();
 }
 
@@ -1037,12 +1116,12 @@ void VkEngine::InitBackgroundPipelines()
 
 	VkShaderModule gradientShader;
 	if (!LoadShader("shaders/gradient_color.comp.spv", vd.device_, &gradientShader)) {
-		fmt::print("Error when building the compute shader \n");
+		LOG(ERR, "Error when building the compute shader");
 	}
 
 	VkShaderModule skyShader;
 	if (!LoadShader("shaders/sky.comp.spv", vd.device_, &skyShader)) {
-		fmt::print("Error when building the compute shader \n");
+		LOG(ERR,"Error when building the compute shader");
 	}
 
 	VkPipelineShaderStageCreateInfo gradientStageInfo = PipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, gradientShader);
@@ -1085,46 +1164,6 @@ void VkEngine::InitBackgroundPipelines()
 	});
 }
 
-void VkEngine::InitTrianglePipeline()
-{
-	VkShaderModule triangleFragShader;
-	if (!LoadShader("shaders/coloredTriangle.frag.spv", vd.device_, &triangleFragShader)) {
-		LOG(ERR, "Error when building the triangle fragment shader module");
-	}
-
-	VkShaderModule triangleVertexShader;
-	if (!LoadShader("shaders/coloredTriangle.vert.spv", vd.device_, &triangleVertexShader)) {
-		LOG(ERR, "Error when building the triangle vertex shader module");
-	}
-
-	VkPipelineLayoutCreateInfo pipelineLayoutInfo = CreatePipelineLayoutInfo();
-	VK_CHECK(vkCreatePipelineLayout(vd.device_, &pipelineLayoutInfo, nullptr, &trianglePipelineLayout_ ));
-
-	PipelineBuilder pipelineBuilder;
-	pipelineBuilder.data.config.layout = trianglePipelineLayout_;
-	pipelineBuilder.SetShaders(triangleVertexShader, triangleFragShader);
-	pipelineBuilder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-	pipelineBuilder.SetPolygonMode(VK_POLYGON_MODE_FILL);
-	pipelineBuilder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-	pipelineBuilder.SetMultisamplingNone();
-	pipelineBuilder.DisableBlending();
-	pipelineBuilder.DisableDepthTest();
-
-	pipelineBuilder.SetColorAttachmentFormat(drawImage_.imageFormat);
-	pipelineBuilder.SetDepthFormat(VK_FORMAT_UNDEFINED);
-
-	trianglePipeline_ = pipelineBuilder.BuildPipeline(vd.device_, pipelineBuilder.data);
-
-	// clean structures
-	vkDestroyShaderModule(vd.device_, triangleFragShader, nullptr);
-	vkDestroyShaderModule(vd.device_, triangleVertexShader, nullptr);
-
-	mainDeletionQueue_.push_function([&]() {
-		vkDestroyPipelineLayout(vd.device_, trianglePipelineLayout_, nullptr);
-		vkDestroyPipeline(vd.device_, trianglePipeline_, nullptr);
-	});
-}
-
 void VkEngine::InitMeshPipeline()
 {
 	VkShaderModule triangleFragShader;
@@ -1150,20 +1189,21 @@ void VkEngine::InitMeshPipeline()
 
 	PipelineBuilder pipelineBuilder;
 	pipelineBuilder.data.config.layout = meshPipelineLayout_;
-	pipelineBuilder.SetShaders(triangleVertexShader, triangleFragShader);
-	pipelineBuilder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-	pipelineBuilder.SetPolygonMode(VK_POLYGON_MODE_FILL);
-	pipelineBuilder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-	pipelineBuilder.SetMultisamplingNone();
-	pipelineBuilder.DisableBlending();
-	pipelineBuilder.DisableDepthTest();
-
-	pipelineBuilder.SetColorAttachmentFormat(drawImage_.imageFormat);
-	pipelineBuilder.SetDepthFormat(VK_FORMAT_UNDEFINED);
+	pipelineBuilder
+			.SetShaders(triangleVertexShader, triangleFragShader)
+			.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+			.SetPolygonMode(VK_POLYGON_MODE_FILL)
+			.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
+			.SetMultisamplingNone()
+			// .DisableBlending()
+			.EnableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+			.SetColorAttachmentFormat(drawImage_.imageFormat)
+			.SetDepthFormat(depthImage_.imageFormat)
+			.EnableBlendingAdditive();
 
 	meshPipeline_ = pipelineBuilder.BuildPipeline(vd.device_, pipelineBuilder.data);
 
-	// clean structures
+	// Destroy shader modules immediately
 	vkDestroyShaderModule(vd.device_, triangleFragShader, nullptr);
 	vkDestroyShaderModule(vd.device_, triangleVertexShader, nullptr);
 
@@ -1171,39 +1211,6 @@ void VkEngine::InitMeshPipeline()
 		vkDestroyPipelineLayout(vd.device_, meshPipelineLayout_, nullptr);
 		vkDestroyPipeline(vd.device_, meshPipeline_, nullptr);
 	});
-}
-
-void VkEngine::InitDefaultData() {
-	std::array<Vertex, 4> rectVertices{};
-
-	rectVertices[0].position = {0.5,-0.5, 0};
-	rectVertices[1].position = {0.5,0.5, 0};
-	rectVertices[2].position = {-0.5,-0.5, 0};
-	rectVertices[3].position = {-0.5,0.5, 0};
-
-	rectVertices[0].color = {0,0, 0,1};
-	rectVertices[1].color = { 0.5,0.5,0.5 ,1};
-	rectVertices[2].color = { 1,0, 0,1 };
-	rectVertices[3].color = { 0,1, 0,1 };
-
-	std::array<u32, 6> rectIndices{};
-
-	rectIndices[0] = 0;
-	rectIndices[1] = 1;
-	rectIndices[2] = 2;
-
-	rectIndices[3] = 2;
-	rectIndices[4] = 1;
-	rectIndices[5] = 3;
-
-	rectangle = UploadMesh(rectIndices, rectVertices);
-
-	//delete the rectangle data on engine shutdown
-	mainDeletionQueue_.push_function([&](){
-		DestroyBuffer(rectangle.indexBuffer);
-		DestroyBuffer(rectangle.vertexBuffer);
-	});
-
 }
 
 #pragma endregion Pipelines
@@ -1396,7 +1403,7 @@ VkDescriptorSet DescriptorAllocator::Allocate(VkDevice device, VkDescriptorSetLa
 #pragma region Render
 
 VkRenderingInfo VkEngine::RenderInfo(VkExtent2D extent, VkRenderingAttachmentInfo* colorAttachment,
-                                     VkRenderingAttachmentInfo* depthAttachment = nullptr)
+                                     VkRenderingAttachmentInfo* depthAttachment)
 {
 	VkRenderingInfo renderInfo = {};
 	renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
@@ -1427,6 +1434,24 @@ VkRenderingAttachmentInfo VkEngine::AttachmentInfo(VkImageView view, VkClearValu
 		colorAttachment.clearValue = *clear;
 
 	return colorAttachment;
+}
+
+VkRenderingAttachmentInfo VkEngine::DepthAttachmentInfo(VkImageView view, VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/)
+{
+	VkRenderingAttachmentInfo depthAttachment
+	{
+		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+		.pNext = nullptr,
+		.imageView = view,
+		.imageLayout = layout,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+
+	};
+
+	depthAttachment.clearValue.depthStencil.depth = 0.f;
+
+	return depthAttachment;
 }
 
 #pragma endregion Render
@@ -1464,58 +1489,60 @@ void VkEngine::DrawBackground(VkCommandBuffer cmd)
 
 void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 {
-	VkRenderingAttachmentInfo colorAttachment = AttachmentInfo(drawImage_.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	VkRenderingInfo renderInfo = RenderInfo(drawExtent_, &colorAttachment, nullptr);
-	vkCmdBeginRendering(cmd, &renderInfo);
+    VkRenderingAttachmentInfo colorAttachment = AttachmentInfo(drawImage_.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
+	VkRenderingAttachmentInfo depthAttachment = DepthAttachmentInfo(depthImage_.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    VkRenderingInfo renderInfo = RenderInfo(drawExtent_, &colorAttachment, &depthAttachment);
+    vkCmdBeginRendering(cmd, &renderInfo);
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline_);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline_);
 
-	//set dynamic viewport and scissor
-	VkViewport viewport = {};
-	viewport.x = 0;
-	viewport.y = 0;
-	viewport.width = drawExtent_.width;
-	viewport.height = drawExtent_.height;
-	viewport.minDepth = 0.f;
-	viewport.maxDepth = 1.f;
-	vkCmdSetViewport(cmd, 0, 1, &viewport);
+    // Set dynamic viewport and scissor
+    VkViewport viewport = {};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = drawExtent_.width;
+    viewport.height = drawExtent_.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-	VkRect2D scissor = {};
-	scissor.offset.x = 0;
-	scissor.offset.y = 0;
-	scissor.extent.width = drawExtent_.width;
-	scissor.extent.height = drawExtent_.height;
-	vkCmdSetScissor(cmd, 0, 1, &scissor);
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width = drawExtent_.width;
+    scissor.extent.height = drawExtent_.height;
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-	//launch a draw command to draw 3 vertices
-	vkCmdDraw(cmd, 3, 1, 0, 0);
+	// Calculate view and projection matrices
+    glm::mat4 view = glm::translate(glm::vec3{ 0, 0, -5 });
+    glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)drawExtent_.width / (float)drawExtent_.height, 0.1f, 10000.f);
 
-	// Bind pipeline for the rectangle mesh
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline_);
+    // Invert the Y direction on projection matrix so that we are more similar to OpenGL and glTF axis
+    projection[1][1] *= -1;
+
 
 	GPUDrawPushConstants push_constants{};
-	push_constants.worldMatrix = glm::mat4{ 1.f };
-	push_constants.vertexBuffer = rectangle.vertexBufferAddress;
-
-	vkCmdPushConstants(cmd, meshPipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
-
-	vkCmdBindIndexBuffer(cmd, rectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-	// Draw the indexed mesh (rectangle)
-	vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
-
-	testMeshes = loader_.loadGltfMeshes(this,"assets\\basicmesh.glb").value();
-
+	push_constants.worldMatrix = projection * view;
 	push_constants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
 
 	vkCmdPushConstants(cmd, meshPipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 	vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
+	// Draw the monkey head
 	vkCmdDrawIndexed(cmd, testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
 
 	vkCmdEndRendering(cmd);
 }
 
+void VkEngine::InitDefaultData() {
+    if (!meshLoaded_) {
+        auto loadedMeshes = loader_.loadGltfMeshes(this, "assets\\basicmesh.glb");
+        if (loadedMeshes.has_value()) {
+            testMeshes = loadedMeshes.value();
+            meshLoaded_ = true;
+        }
+    }
+}
 
 void VkEngine::Draw()
 {
@@ -1526,16 +1553,19 @@ void VkEngine::Draw()
     VK_CHECK(vkResetFences(vd.device_, 1, &GetCurrentFrame().renderFence_));
 
     u32 swapchainImageIndex;
-    VK_CHECK(vkAcquireNextImageKHR(vd.device_, swapchain_, 1000000000, GetCurrentFrame().swapChainSemaphore_, nullptr, &swapchainImageIndex));
-
-    const VkCommandBuffer cmd = GetCurrentFrame().mainCommandBuffer_;
+	VkResult e = vkAcquireNextImageKHR(vd.device_, swapchain_, 1000000000, GetCurrentFrame().swapChainSemaphore_, nullptr, &swapchainImageIndex);
+	if (e == VK_ERROR_OUT_OF_DATE_KHR) {
+		resize_requested = true;
+		return ;
+	}
+    VkCommandBuffer cmd = GetCurrentFrame().mainCommandBuffer_;
 
     VK_CHECK(vkResetCommandBuffer(cmd, 0));
 
     VkCommandBufferBeginInfo cmdBeginInfo = CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-    drawExtent_.width = drawImage_.imageExtent.width;
-    drawExtent_.height = drawImage_.imageExtent.height;
+	drawExtent_.height = std::min(swapchainExtent_.height, drawImage_.imageExtent.height) * renderScale;
+	drawExtent_.width = std::min(swapchainExtent_.width, drawImage_.imageExtent.width) * renderScale;
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
@@ -1545,8 +1575,11 @@ void VkEngine::Draw()
 	// Draw the background using compute shader
 	DrawBackground(cmd);
 
-	// Transition draw image to COLOR_ATTACHMENT_OPTIMAL layout for rendering
+	// Transition draw image for color attachment
 	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+	// Transition depth image for depth attachment
+	TransitionImage(cmd, depthImage_.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	// Draw geometry
 	DrawGeometry(cmd);
@@ -1560,7 +1593,7 @@ void VkEngine::Draw()
 	// Copy image from drawImage_.image to swapchainImages_[swapchainImageIndex]
 	CopyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], drawExtent_, swapchainExtent_);
 
-	// Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL layout for rendering
+	// Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL layout for rendering ImGui
 	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	// Draw the ImGui interface
@@ -1591,8 +1624,10 @@ void VkEngine::Draw()
         .pImageIndices = &swapchainImageIndex
     };
 
-    VK_CHECK(vkQueuePresentKHR(graphicsQueue_, &presentInfo_));
-
+	VkResult presentResult = vkQueuePresentKHR(graphicsQueue_, &presentInfo_);
+	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
+		resize_requested = true;
+	}
     frameNumber_++;
 }
 

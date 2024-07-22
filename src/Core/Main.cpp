@@ -1,56 +1,53 @@
-#include <filesystem>
-
+#include <iostream>
+#include <windows.h>
 
 #include "../Platform/PlatformWindows.h"
 #include "../Renderer/Vulkan/VulkanMain.h"
 
-namespace fs = std::filesystem;
-
-std::ofstream logFile;
-std::streambuf* originalCoutBuf = nullptr;
-std::streambuf* originalCerrBuf = nullptr;
-
 #ifdef _WIN32
-// Color coding for my logs
 void InitConsole()
 {
-	// Allocate a new console
-	AllocConsole();
-	// Attach standard input, output, and error to the console
-	freopen_s(new FILE*, "CONIN$", "r", stdin);
-	freopen_s(new FILE*, "CONOUT$", "w", stdout);
-	freopen_s(new FILE*, "CONOUT$", "w", stderr);
+    // Allocate a new console
+    AllocConsole();
+    // Attach standard input, output, and error to the console
+    freopen_s(new FILE*, "CONIN$", "r", stdin);
+    freopen_s(new FILE*, "CONOUT$", "w", stdout);
+    freopen_s(new FILE*, "CONOUT$", "w", stderr);
 
-	std::cout << "Console Output Enabled\n";
+    std::cout << "Console Output Enabled\n";
 
-	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-	DWORD dwMode = 0;
-	if (hOut == INVALID_HANDLE_VALUE || !GetConsoleMode(hOut, &dwMode)) return;
-	SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD dwMode = 0;
+    if (hOut == INVALID_HANDLE_VALUE || !GetConsoleMode(hOut, &dwMode)) return;
+    SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 }
+
+
 
 int main()
 {
 #ifdef DEBUG
-	Logger::Init();
+    Logger::Init();
+    InitConsole();
 #endif
-	Platform::WindowContext windowContext;
-	windowContext.SetDimensions(1280, 720);
-	Platform::Win32 platform(&windowContext);
 
-	GraphicsAPI::Vulkan::VkEngine engine(&windowContext);
+    Platform::WindowContext windowContext;
+    windowContext.SetDimensions(1920, 1080);
+    Platform::Win32 platform(&windowContext);
+    GraphicsAPI::Vulkan::VkEngine engine(&windowContext);
 
-#ifdef DEBUG
-	InitConsole();
-#endif
-	platform.Init();
-	engine.Init();
-	// Run the main loop
-	engine.Run();
+    if (!platform.Init())
+    {
+        std::cerr << "Failed to initialize the platform.\n";
+        return EXIT_FAILURE;
+    }
 
-	std::cin.get();
-	FreeConsole();
+    engine.Init();
+    engine.Run();
 
-	return 0;
+    // Cleanup
+    engine.Cleanup();
+    platform.DestroyAppWindow();
+    return 0;
 }
 #endif
