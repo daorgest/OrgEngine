@@ -2,10 +2,8 @@
 // Created by Orgest on 7/18/2024.
 //
 #pragma once
-
+#include "VulkanHeader.h"
 #include <filesystem>
-#include "../../Core/PrimTypes.h"
-#include "VulkanTypes.h"
 
 namespace GraphicsAPI::Vulkan
 {

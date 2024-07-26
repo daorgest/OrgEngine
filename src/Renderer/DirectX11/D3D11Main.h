@@ -1,9 +1,9 @@
 //
 // Created by Orgest on 7/4/2024.
 //
+#pragma once
 
-#ifndef D3D11MAIN_H
-#define D3D11MAIN_H
+#ifndef DX11_BUILD
 
 #include <d3d11.h>
 #include <dxgi1_6.h>
@@ -44,4 +44,4 @@ private:
 
 
 
-#endif //D3D11MAIN_H
+#endif

@@ -1,6 +1,22 @@
 ﻿cmake_minimum_required(VERSION 3.28)
 
-project("OrgEngine")
+project(OrgEngine VERSION 0.1)
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Optionally define the flag based on some condition
+option(USE_DIRECTX11 "Use DirectX 11 Renderer" OFF)
+option(USE_VULKAN "Use Vulkan Renderer" TRUE)
+
+
+add_definitions(-DVULKAN_BUILD)
+
+
+# Ensure we are using wide characters on Windows universally
+add_definitions(-DUNICODE -D_UNICODE)
+add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
+add_definitions(-DNOMINMAX)
 
 # Set the MSVC debug information format for supporting Edit and Continue
 if(MSVC)
@@ -13,28 +29,22 @@ if(MSVC)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<CONFIG:Debug,RelWithDebInfo>,EditAndContinue,ProgramDatabase>")
 endif()
 
-# Ensure we are using wide characters on Windows universally
-add_definitions(-DUNICODE -D_UNICODE)
-
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-add_definitions(-DNOMINMAX)
-
-
 # Globbing source files
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
 
 # Add source to this project's executable
-add_executable(OrgEngine WIN32 ${SOURCE_FILES})
+add_executable(OrgEngine ${SOURCE_FILES})
 
 # Find Vulkan package
 find_package(Vulkan REQUIRED)
 
+# Include and link only necessary libraries
 add_subdirectory(libs/3rdParty/fmt)
 add_subdirectory(libs/3rdParty/glm)
 add_subdirectory(libs/3rdParty/vk-bootstrap)
 add_subdirectory(libs/3rdParty/vma)
 add_subdirectory(libs/3rdParty/fastgltf)
+
 set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/3rdParty/imgui")
 file(GLOB IMGUI_SOURCES
         "${IMGUI_DIR}/*.cpp"
@@ -44,7 +54,7 @@ file(GLOB IMGUI_SOURCES
         "${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp"
         "${IMGUI_DIR}/backends/imgui_impl_vulkan.h")
 
-# Include Vulkan headers
+# Include directories
 target_include_directories(OrgEngine PRIVATE
         ${Vulkan_INCLUDE_DIRS}
         "${CMAKE_SOURCE_DIR}/3rdParty/vma/"
@@ -55,9 +65,10 @@ target_include_directories(OrgEngine PRIVATE
 # Add ImGui sources to the executable
 target_sources(OrgEngine PRIVATE ${IMGUI_SOURCES})
 option(FASTGLTF_COMPILE_AS_CPP20 "Compile FastGLTF as C++20" ON)
-# Link
+
+# Link libraries
 target_link_libraries(OrgEngine PRIVATE
-        ${Vulkan_LIBRARIES}
+        Vulkan::Vulkan
         fmt::fmt
         vk-bootstrap::vk-bootstrap
         GPUOpen::VulkanMemoryAllocator
@@ -127,3 +138,13 @@ add_custom_target(Shaders DEPENDS ${SHADER_OUTPUT})
 
 # Add Shaders target as a dependency of OrgEngine
 add_dependencies(OrgEngine Shaders)
+
+if(${CMAKE_CXX_FLAGS_RELEASE})
+  include(InstallRequiredSystemLibraries)
+  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/License.txt")
+  set(CPACK_PACKAGE_VERSION_MAJOR "${Tutorial_VERSION_MAJOR}")
+  set(CPACK_PACKAGE_VERSION_MINOR "${Tutorial_VERSION_MINOR}")
+  set(CPACK_GENERATOR "TGZ")
+  set(CPACK_SOURCE_GENERATOR "TGZ")
+  include(CPack)
+endif()

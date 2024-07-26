@@ -2,6 +2,7 @@
 // Created by Orgest on 4/12/2024.
 //
 
+#ifdef VULKAN_BUILD
 #include "VulkanMain.h"
 #include "VkBootstrap.h"
 #include "VulkanPipelines.h"
@@ -21,7 +22,7 @@ using namespace GraphicsAPI::Vulkan;
 
 VkEngine::VkEngine(Platform::WindowContext *winManager) :
 	depthImage_(), meshPipelineLayout_(nullptr), meshPipeline_(nullptr), rectangle(), winManager_(winManager),
-	win32_(nullptr), allocator_(nullptr)
+	win32_(nullptr), allocator_(nullptr), swapchainImageFormat_(), frames_{}
 {
 	// // if (winManager)
 	//      Init();
@@ -62,6 +63,7 @@ void VkEngine::Run()
 				else if (msg.wParam == SC_RESTORE)
 				{
 					stopRendering_ = false;
+					resizeRequested = true;
 				}
 			}
 
@@ -71,7 +73,7 @@ void VkEngine::Run()
 				if (msg.wParam != SIZE_MINIMIZED)
 				{
 
-					resize_requested = true;
+					resizeRequested = true;
 				}
 			}
 		}
@@ -82,7 +84,7 @@ void VkEngine::Run()
 			break;
 		}
 
-		if (resize_requested)
+		if (resizeRequested)
 			ResizeSwapchain();
 
 		// Do not draw if we are minimized
@@ -117,6 +119,12 @@ void VkEngine::UpdateFPS() {
 
 void VkEngine::ResizeSwapchain()
 {
+
+	if (winManager_->screenWidth == 0 || winManager_->screenHeight == 0)
+	{
+		// Skip resizing if dimensions are invalid (minimized window)
+		return;
+	}
 	vkDeviceWaitIdle(vd.device_);
 
 	DestroySwapchain();
@@ -130,7 +138,7 @@ void VkEngine::ResizeSwapchain()
 
 	CreateSwapchain(swapchainExtent_.width, swapchainExtent_.height);
 
-	resize_requested = false;
+	resizeRequested = false;
 }
 
 
@@ -813,6 +821,8 @@ void VkEngine::ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& functi
 
 #pragma region Image
 
+// AllocatedImage
+
 VkImageCreateInfo VkEngine::ImageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent)
 {
 	return
@@ -884,9 +894,10 @@ void VkEngine::CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage des
 	blitRegion.dstSubresource.layerCount = 1;
 	blitRegion.dstSubresource.mipLevel = 0;
 
-	VkBlitImageInfo2 blitInfo{.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
-							  .pNext = nullptr,
-							  .srcImage = source,
+	VkBlitImageInfo2 blitInfo{
+		.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+		.pNext = nullptr,
+		.srcImage = source,
 							  .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 							  .dstImage = destination,
 							  .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -1284,32 +1295,37 @@ void VkEngine::InitDescriptors()
 		drawImageDescriptorLayout_ = builder.Build(vd.device_, VK_SHADER_STAGE_COMPUTE_BIT);
 	}
 
+
 	//allocate a descriptor set for our draw image
 	drawImageDescriptors_ = globalDescriptorAllocator.Allocate(vd.device_, drawImageDescriptorLayout_);
 
-	VkDescriptorImageInfo imgInfo{};
-	imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-	imgInfo.imageView = drawImage_.imageView;
+	VkDescriptorWriter writer;
+	writer.WriteImage(0, drawImage_.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+	writer.UpdateSet(vd.device_, drawImageDescriptors_);
 
-	VkWriteDescriptorSet drawImageWrite = {};
-	drawImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	drawImageWrite.pNext = nullptr;
-
-	drawImageWrite.dstBinding = 0;
-	drawImageWrite.dstSet = drawImageDescriptors_;
-	drawImageWrite.descriptorCount = 1;
-	drawImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-	drawImageWrite.pImageInfo = &imgInfo;
-
-	vkUpdateDescriptorSets(vd.device_, 1, &drawImageWrite, 0, nullptr);
-
-	//make sure both the descriptor allocator and the new layout get cleaned up properly
-	mainDeletionQueue_.push_function([&]()
+	// Create a descriptor set layout with a single uniform buffer binding
 	{
-		globalDescriptorAllocator.DestroyPool(vd.device_);
+		DescriptorLayoutBuilder builder;
+		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		gpuSceneDataDescriptorLayout_ = builder.Build(vd.device_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+	}
 
-		vkDestroyDescriptorSetLayout(vd.device_, drawImageDescriptorLayout_, nullptr);
-	});
+	for (int i = 0; i < FRAME_OVERLAP; i++) {
+		// create a descriptor pool
+		std::vector<VkDescriptor::PoolSizeRatio> frame_sizes = {
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+		};
+
+		frames_[i].frameDescriptors_ = VkDescriptor{};
+		frames_[i].frameDescriptors_.Init(vd.device_, 1000, frame_sizes);
+
+		mainDeletionQueue_.push_function([&, i]() {
+			frames_[i].frameDescriptors_.DestroyPools(vd.device_);
+		});
+	}
 }
 
 void DescriptorLayoutBuilder::AddBinding(u32 binding, VkDescriptorType type)
@@ -1489,6 +1505,32 @@ void VkEngine::DrawBackground(VkCommandBuffer cmd)
 
 void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 {
+	// Allocate a new uniform buffer for the scene data
+    AllocatedBuffer gpuSceneDataBuffer = CreateBuffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    // Add it to the deletion queue of this frame so it gets deleted once it's been used
+    GetCurrentFrame().deletionQueue_.push_function([=, this]() {
+        DestroyBuffer(gpuSceneDataBuffer);
+    });
+
+	// Map the uniform buffer memory to CPU address space
+	void* mappedData = nullptr;
+	VK_CHECK(vmaMapMemory(allocator_, gpuSceneDataBuffer.allocation, &mappedData));
+
+	// Copy scene data to the mapped memory
+	memcpy(mappedData, &sceneData, sizeof(GPUSceneData));
+
+	// Unmap the uniform buffer memory
+	vmaUnmapMemory(allocator_, gpuSceneDataBuffer.allocation);
+
+    // Create a descriptor set that binds that buffer and update it
+    VkDescriptorSet globalDescriptor = GetCurrentFrame().frameDescriptors_.Allocate(vd.device_, gpuSceneDataDescriptorLayout_);
+
+    VkDescriptorWriter writer;
+    writer.WriteBuffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.UpdateSet(vd.device_, globalDescriptor);
+
+
     VkRenderingAttachmentInfo colorAttachment = AttachmentInfo(drawImage_.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
 	VkRenderingAttachmentInfo depthAttachment = DepthAttachmentInfo(depthImage_.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
     VkRenderingInfo renderInfo = RenderInfo(drawExtent_, &colorAttachment, &depthAttachment);
@@ -1549,13 +1591,14 @@ void VkEngine::Draw()
     // Wait until the GPU has finished rendering the last frame. Timeout of 1 second
     VK_CHECK(vkWaitForFences(vd.device_, 1, &GetCurrentFrame().renderFence_, true, 1000000000));
     GetCurrentFrame().deletionQueue_.flush();
+	GetCurrentFrame().frameDescriptors_.ClearPools(vd.device_);
 
     VK_CHECK(vkResetFences(vd.device_, 1, &GetCurrentFrame().renderFence_));
 
     u32 swapchainImageIndex;
 	VkResult e = vkAcquireNextImageKHR(vd.device_, swapchain_, 1000000000, GetCurrentFrame().swapChainSemaphore_, nullptr, &swapchainImageIndex);
 	if (e == VK_ERROR_OUT_OF_DATE_KHR) {
-		resize_requested = true;
+		resizeRequested = true;
 		return ;
 	}
     VkCommandBuffer cmd = GetCurrentFrame().mainCommandBuffer_;
@@ -1626,11 +1669,11 @@ void VkEngine::Draw()
 
 	VkResult presentResult = vkQueuePresentKHR(graphicsQueue_, &presentInfo_);
 	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
-		resize_requested = true;
+		resizeRequested = true;
 	}
     frameNumber_++;
 }
 
-
-
 #pragma endregion Draw
+#endif
+

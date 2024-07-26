@@ -10,14 +10,15 @@
 
 namespace Platform
 {
-
     // Context (current status)
     struct WindowContext
     {
         HWND hwnd{};
         HINSTANCE hInstance{};
-        u32 screenWidth{};
-        u32 screenHeight{};
+        u32 screenWidth = GetSystemMetrics(SM_CXSCREEN);
+        u32 screenHeight = GetSystemMetrics(SM_CYSCREEN);
+        u32 windowPosX = (GetSystemMetrics(SM_CXSCREEN) - screenWidth) / 2;
+        u32 windowPosY = (GetSystemMetrics(SM_CYSCREEN) - screenHeight) / 2;
         bool isFocused{false};
         bool isFullscreen{false};
         bool needsSwapchainRecreation{false};
@@ -26,6 +27,7 @@ namespace Platform
         {
             screenWidth = width;
             screenHeight = height;
+            UpdateWindowPosition();
         }
 
         void GetWindowSize(u32& width, u32& height) const
@@ -41,6 +43,15 @@ namespace Platform
 
         void UpdateDimensions() {
             GetWindowSize(screenWidth, screenHeight);
+        }
+
+        void UpdateWindowPosition()
+        {
+            if (hwnd) {
+                windowPosX = (GetSystemMetrics(SM_CXSCREEN) - screenWidth) / 2;
+                windowPosY = (GetSystemMetrics(SM_CYSCREEN) - screenHeight) / 2;
+                SetWindowPos(hwnd, nullptr, windowPosX, windowPosY, 0, 0, SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
         }
 
         void ToggleFullscreen()
@@ -82,8 +93,6 @@ namespace Platform
     private:
         static Input input;  // Static to maintain state across messages
         static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
-        [[nodiscard]] bool RegisterWindowClass() const;
-
         const wchar_t* appName_ = L"OrgEngine - Vulkan";
         WindowContext* windowContext_;
     };

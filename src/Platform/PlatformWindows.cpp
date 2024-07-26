@@ -3,7 +3,6 @@
 //
 
 #include "PlatformWindows.h"
-#include <windowsx.h>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -61,8 +60,8 @@ namespace Platform
             }
             break;
         case WM_MOUSEMOVE:
-            input.cursorX = GET_X_LPARAM(lp);
-            input.cursorY = GET_Y_LPARAM(lp);
+            // input.cursorX = GET_X_LPARAM(lp);
+            // input.cursorY = GET_Y_LPARAM(lp);
             break;
         case WM_LBUTTONDOWN:
             processEventButton(input.lMouseButton, true);
@@ -98,23 +97,38 @@ namespace Platform
 
     bool Win32::Init()
     {
-        if (!RegisterWindowClass())
-        {
-            MessageBox(nullptr, L"Cannot register window class :/.", L"Error", MB_OK | MB_ICONERROR);
-            return false;
-        }
+
+    	// Ensure DPI Awareness for high-DPI displays
+    	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+    	const WNDCLASSEX wcex
+		{
+			.cbSize = sizeof(wcex),
+			.style = CS_HREDRAW | CS_VREDRAW,
+			.lpfnWndProc = WndProc,
+			.hInstance = windowContext_->hInstance,
+			.hCursor = LoadCursor(nullptr, IDC_ARROW),
+			.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)), // YEAH A BLACK BG
+			.lpszClassName = appName_,
+		};
+
+    	if (RegisterClassEx(&wcex) == 0)
+    	{
+    		MessageBox(nullptr, L"Failed to register window class.", L"Error", MB_OK | MB_ICONERROR);
+    		return false;
+    	}
 
         windowContext_->hwnd = CreateWindowEx(
             0,
             appName_,
 #ifdef DEBUG
-            L"OrgEngine - Debug", // Window text (Debug version)
+            L"OrgEngine - Debug",			 // Window text (Debug version)
 #else
             L"OrgEngine - Release",          // Window text (Release version)
 #endif
             WS_OVERLAPPEDWINDOW,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
+            windowContext_->windowPosX,
+            windowContext_->windowPosY,
             static_cast<i32>(windowContext_->screenWidth),
             static_cast<i32>(windowContext_->screenHeight),
             nullptr,
@@ -162,21 +176,5 @@ namespace Platform
         {
             LOG(INFO, "A has been pressed");
         }
-    }
-
-    bool Win32::RegisterWindowClass() const
-    {
-        const WNDCLASSEX wcex
-        {
-            .cbSize = sizeof(wcex),
-            .style = CS_HREDRAW | CS_VREDRAW,
-            .lpfnWndProc = WndProc,
-            .hInstance = windowContext_->hInstance,
-            .hCursor = LoadCursor(nullptr, IDC_ARROW),
-            .hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)), // YEAH A BLACK BG
-            .lpszClassName = appName_,
-        };
-
-        return RegisterClassEx(&wcex) != 0;
     }
 }

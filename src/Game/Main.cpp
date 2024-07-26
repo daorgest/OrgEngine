@@ -1,6 +1,4 @@
 #include <iostream>
-#include <windows.h>
-
 #include "../Platform/PlatformWindows.h"
 #include "../Renderer/Vulkan/VulkanMain.h"
 
@@ -23,8 +21,7 @@ void InitConsole()
 }
 
 
-
-int main()
+int main(int argc, char** argv)
 {
 #ifdef DEBUG
     Logger::Init();
@@ -32,7 +29,6 @@ int main()
 #endif
 
     Platform::WindowContext windowContext;
-    windowContext.SetDimensions(1920, 1080);
     Platform::Win32 platform(&windowContext);
     GraphicsAPI::Vulkan::VkEngine engine(&windowContext);
 

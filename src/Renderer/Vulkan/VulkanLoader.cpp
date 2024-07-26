@@ -3,11 +3,11 @@
 //
 
 #include "VulkanLoader.h"
+#include "VulkanMain.h"
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include <stb_image.h>
 
-#include "VulkanMain.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 

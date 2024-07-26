@@ -16,7 +16,6 @@
 
 
 #ifdef _WIN32
-#define VK_USE_PLATFORM_WIN32_KHR
 #define NOMINMAX 1
 #define WIN32_LEAN_AND_MEAN
 #define WIN32_EXTRA_LEAN
@@ -25,18 +24,6 @@
 
 #include "backends/imgui_impl_win32.h"
 #include "imgui.h"
-
-#define VK_CHECK(x)                                                                                                    \
-	do                                                                                                                 \
-	{                                                                                                                  \
-		VkResult err = x;                                                                                              \
-		if (err)                                                                                                       \
-		{                                                                                                              \
-			LOG(ERR, "Detected Vulkan error: {}", string_VkResult(err));                                               \
-			abort();                                                                                                   \
-		}                                                                                                              \
-	}                                                                                                                  \
-	while (0)
 
 // Export/Import Definitions
 #ifdef ORGEXPORT

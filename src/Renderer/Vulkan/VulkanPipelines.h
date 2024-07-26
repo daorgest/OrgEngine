@@ -2,11 +2,9 @@
 // Created by Orgest on 7/5/2024.
 //
 
-#ifndef VULKANPIPELINES_H
-#define VULKANPIPELINES_H
+#pragma once
 #include <vector>
 #include <vulkan/vulkan.h>
-#include <vulkan/vk_enum_string_helper.h>
 namespace GraphicsAPI::Vulkan
 {
 	struct ShaderStages
@@ -63,7 +61,3 @@ namespace GraphicsAPI::Vulkan
 		PipelineBuilder& EnableBlendingAlphaBlend();
 	};
 }
-
-
-
-#endif //VULKANPIPELINES_H
