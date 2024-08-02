@@ -20,6 +20,17 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: VulkanCI
+      uses: NcStudios/VulkanCI@v1.1
+      with:
+        sdkVersion: 1.3.283.0  # Specify the Vulkan SDK version you want to use
+        installPath: ${{ github.workspace }}/VulkanSDK # Set the install path for Vulkan
+
+    - name: Set up Vulkan SDK
+      run: |
+        echo "Setting up Vulkan SDK environment"
+        echo "${{ github.workspace }}/VulkanSDK/1.3.283.0/Environment" >> $GITHUB_ENV
+
     - name: Set up CMake
       uses: lukka/get-cmake@v3.30.1
       with:
@@ -31,3 +42,6 @@ jobs:
 
     - name: Build
       run: cmake --build build --config ${{matrix.build_type}}
+
+    - name: Run Tests
+      run: ctest --output-on-failure -C ${{matrix.build_type}} --test-dir build
