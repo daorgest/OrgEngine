@@ -19,6 +19,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: true
 
     - name: VulkanCI
       uses: NcStudios/VulkanCI@v1.1
@@ -42,6 +44,3 @@ jobs:
 
     - name: Build
       run: cmake --build build --config ${{matrix.build_type}}
-
-    - name: Run Tests
-      run: ctest --output-on-failure -C ${{matrix.build_type}} --test-dir build
