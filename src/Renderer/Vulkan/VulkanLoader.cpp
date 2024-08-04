@@ -5,18 +5,34 @@
 #include "VulkanLoader.h"
 #include "VulkanMain.h"
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-
-#include <fastgltf/core.hpp>
-#include <fastgltf/glm_element_traits.hpp>
-#include <fastgltf/tools.hpp>
 
 namespace GraphicsAPI::Vulkan
 {
+
+	bool VkLoader::LoadShader(const std::filesystem::path& filePath, VkDevice device, VkShaderModule* outShaderModule) {
+		try {
+			std::vector<u32> buffer = ReadFile(filePath);
+
+			VkShaderModuleCreateInfo createInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+				.codeSize = buffer.size() * sizeof(u32),
+				.pCode = buffer.data()
+			};
+
+			VkShaderModule shaderModule;
+			if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+				throw std::runtime_error("Failed to create shader for file: " + filePath.string());
+			}
+
+			*outShaderModule = shaderModule;
+			return true;
+		}
+		catch (const std::exception& e) {
+			LOG(ERR, e.what());
+			return false;
+		}
+	}
 
 	std::optional<std::vector<std::shared_ptr<MeshAsset>>> VkLoader::loadGltfMeshes(VkEngine *engine,
 																		  const std::filesystem::path &filePath)
@@ -38,57 +54,22 @@ namespace GraphicsAPI::Vulkan
 		std::vector<u32> indices;
 		std::vector<Vertex> vertices;
 
-		auto loadIndices = [&](const fastgltf::Accessor &indexAccessor)
-		{
-			indices.reserve(indices.size() + indexAccessor.count);
-			fastgltf::iterateAccessor<u32>(gltf, indexAccessor,
-										   [&](u32 idx) { indices.push_back(idx + vertices.size()); });
-		};
-
-		auto loadVertices = [&](const fastgltf::Accessor &posAccessor)
-		{
-			vertices.resize(vertices.size() + posAccessor.count);
-			fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
-														  [&](glm::vec3 v, size_t index)
-														  {
-															  Vertex newvtx{};
-															  newvtx.position = v;
-															  newvtx.normal = {1, 0, 0};
-															  newvtx.color = glm::vec4{1.f};
-															  newvtx.uv_x = 0;
-															  newvtx.uv_y = 0;
-															  vertices[vertices.size() - posAccessor.count + index] =
-																  newvtx;
-														  });
-		};
-
-		auto loadAttribute =
-			[&](const fastgltf::Primitive &primitive, const std::string &attributeName, auto accessorFunc)
-		{
-			if (auto attr = primitive.findAttribute(attributeName); attr != primitive.attributes.end())
-			{
-				accessorFunc(gltf.accessors[attr->accessorIndex]);
-			}
-		};
-
-		for (fastgltf::Mesh &mesh : gltf.meshes)
-		{
+		for (fastgltf::Mesh& mesh : gltf.meshes) {
 			MeshAsset newMesh;
 			newMesh.name = mesh.name;
 
 			indices.clear();
 			vertices.clear();
 
-			for (auto &&primitive : mesh.primitives)
-			{
+			for (auto&& primitive : mesh.primitives) {
 				GeoSurface newSurface{};
 				newSurface.startIndex = static_cast<u32>(indices.size());
 				newSurface.count = static_cast<u32>(gltf.accessors[primitive.indicesAccessor.value()].count);
 
-				loadIndices(gltf.accessors[primitive.indicesAccessor.value()]);
-				loadVertices(gltf.accessors[primitive.findAttribute("POSITION")->accessorIndex]);
+				loadIndices(gltf.accessors[primitive.indicesAccessor.value()], indices, vertices, gltf);
+				loadVertices(gltf.accessors[primitive.findAttribute("POSITION")->accessorIndex], vertices, gltf);
 
-				loadAttribute(primitive, "NORMAL",
+				loadAttribute(primitive, "NORMAL", gltf,
 							  [&](const fastgltf::Accessor &accessor)
 							  {
 								  fastgltf::iterateAccessorWithIndex<glm::vec3>(
@@ -96,7 +77,7 @@ namespace GraphicsAPI::Vulkan
 									  { vertices[vertices.size() - accessor.count + index].normal = v; });
 							  });
 
-				loadAttribute(primitive, "TEXCOORD_0",
+				loadAttribute(primitive, "TEXCOORD_0", gltf,
 							  [&](const fastgltf::Accessor &accessor)
 							  {
 								  fastgltf::iterateAccessorWithIndex<glm::vec2>(
@@ -108,7 +89,7 @@ namespace GraphicsAPI::Vulkan
 									  });
 							  });
 
-				loadAttribute(primitive, "COLOR_0",
+				loadAttribute(primitive, "COLOR_0", gltf,
 							  [&](const fastgltf::Accessor &accessor)
 							  {
 								  fastgltf::iterateAccessorWithIndex<glm::vec4>(
@@ -120,10 +101,8 @@ namespace GraphicsAPI::Vulkan
 			}
 
 			constexpr bool OverrideColors = true;
-			if (OverrideColors)
-			{
-				for (Vertex &vtx : vertices)
-				{
+			if (OverrideColors) {
+				for (Vertex& vtx : vertices) {
 					vtx.color = glm::vec4(vtx.normal, 1.f);
 				}
 			}
@@ -135,4 +114,29 @@ namespace GraphicsAPI::Vulkan
 		return meshes;
 	}
 
-} // namespace GraphicsAPI::Vulkan
+	void VkLoader::loadIndices(const fastgltf::Accessor& indexAccessor, std::vector<u32>& indices, const std::vector<Vertex>& vertices, const fastgltf::Asset& gltf) {
+		indices.reserve(indices.size() + indexAccessor.count);
+		fastgltf::iterateAccessor<u32>(gltf, indexAccessor, [&](u32 idx) {
+			indices.push_back(idx + vertices.size());
+		});
+	}
+
+	void VkLoader::loadVertices(const fastgltf::Accessor& posAccessor, std::vector<Vertex>& vertices, const fastgltf::Asset& gltf) {
+		vertices.resize(vertices.size() + posAccessor.count);
+		fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor, [&](glm::vec3 v, size_t index) {
+			Vertex newvtx{};
+			newvtx.position = v;
+			newvtx.normal = {1, 0, 0};
+			newvtx.color = glm::vec4{1.f};
+			newvtx.uv_x = 0;
+			newvtx.uv_y = 0;
+			vertices[vertices.size() - posAccessor.count + index] = newvtx;
+		});
+	}
+
+	void VkLoader::loadAttribute(const fastgltf::Primitive& primitive, const std::string& attributeName, const fastgltf::Asset& gltf, const std::function<void(const fastgltf::Accessor&)>& accessorFunc) {
+		if (auto attr = primitive.findAttribute(attributeName); attr != primitive.attributes.end()) {
+			accessorFunc(gltf.accessors[attr->accessorIndex]);
+		}
+	}
+}

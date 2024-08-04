@@ -21,8 +21,8 @@ constexpr bool bUseValidationLayers = false;
 using namespace GraphicsAPI::Vulkan;
 
 VkEngine::VkEngine(Platform::WindowContext *winManager) :
-	depthImage_(), meshPipelineLayout_(nullptr), meshPipeline_(nullptr), rectangle(), winManager_(winManager),
-	win32_(nullptr), allocator_(nullptr), swapchainImageFormat_(), frames_{}
+	winManager_(winManager), win32_(nullptr), allocator_(nullptr), swapchainImageFormat_(), frames_{},
+	depthImage_(), meshPipelineLayout_(nullptr), meshPipeline_(nullptr), rectangle()
 {
 	// // if (winManager)
 	//      Init();
@@ -147,7 +147,7 @@ void VkEngine::RenderMemoryUsageImGui() {
 	vmaGetHeapBudgets(allocator_, budgets);
 
 	ImGui::Text("Memory Budget:");
-	for (uint32_t i = 0; i < 2; ++i) {
+	for (u32 i = 0; i < 2; ++i) {
 		if (budgets[i].statistics.blockCount > 0) {
 			double usageMB = static_cast<double>(budgets[i].usage) / (1024.0 * 1024.0);
 			double budgetMB = static_cast<double>(budgets[i].budget) / (1024.0 * 1024.0);
@@ -183,7 +183,7 @@ void VkEngine::RenderQuickStatsImGui() {
 	if (ImGui::Begin("Quick Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
 		ImGui::Text("FPS: %.2f", fps_);
 		ImGui::Text("Window Resolution: %ux%u", width, height);
-		ImGui::Text("Internal Resoultion: %ux%u", drawExtent_.width, drawExtent_.height);
+		ImGui::Text("Internal Resoultion: %ux%u", windowExtent_.width, windowExtent_.height);
 		RenderMemoryUsageImGui();
 	}
 	ImGui::End();
@@ -821,7 +821,90 @@ void VkEngine::ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& functi
 
 #pragma region Image
 
-// AllocatedImage
+AllocatedImage VkEngine::CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
+{
+	AllocatedImage newImage
+	{
+		.imageExtent = size,
+		.imageFormat = format
+	};
+
+	VkImageCreateInfo imgInfo = ImageCreateInfo(format, usage, size);
+	if (mipmapped)
+	{
+		imgInfo.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
+	}
+
+	// always allocate images on dedicated GPU memory
+	VmaAllocationCreateInfo allocinfo
+	{
+		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+	};
+
+	VK_CHECK(vmaCreateImage(allocator_, &imgInfo, &allocinfo, &newImage.image, &newImage.allocation, nullptr));
+
+	// if the format is a depth format, we will need to have it use the correct aspect flag
+	VkImageAspectFlags aspectFlag = VK_IMAGE_ASPECT_COLOR_BIT;
+	if (format == VK_FORMAT_D32_SFLOAT)
+	{
+		aspectFlag = VK_IMAGE_ASPECT_DEPTH_BIT;
+	}
+
+	// build an image-view for the image
+	VkImageViewCreateInfo viewInfo = ImageViewCreateInfo(format, newImage.image, aspectFlag);
+	viewInfo.subresourceRange.levelCount = imgInfo.mipLevels;
+
+	VK_CHECK(vkCreateImageView(vd.device_, &viewInfo, nullptr, &newImage.imageView));
+
+	return newImage;
+
+}
+
+AllocatedImage VkEngine::CreateImageData(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
+{
+	size_t dataSize = size.depth * size.width * size.height * 4;
+	AllocatedBuffer uploadBuffer = CreateBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+	memcpy(uploadBuffer.info.pMappedData, data, dataSize);
+
+	AllocatedImage newImage = CreateImage(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
+
+	ImmediateSubmit([&](VkCommandBuffer cmd)
+	{
+		TransitionImage(cmd, newImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+		VkBufferImageCopy copyRegion
+		{
+			.bufferOffset = 0,
+			.bufferRowLength = 0,
+			.bufferImageHeight = 0,
+			.imageSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = 0,
+				.baseArrayLayer = 0,
+				.layerCount = 1
+			},
+			.imageExtent = size
+		};
+
+		// copy the buffer into the image
+		vkCmdCopyBufferToImage(cmd, uploadBuffer.buffer, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+		TransitionImage(cmd, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	});
+
+	DestroyBuffer(uploadBuffer);
+
+	return newImage;
+}
+
+void VkEngine::DestroyImage(const AllocatedImage& img)
+{
+	vkDestroyImageView(vd.device_, img.imageView, nullptr);
+	vmaDestroyImage(allocator_, img.image, img.allocation);
+}
+
 
 VkImageCreateInfo VkEngine::ImageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent)
 {
@@ -1015,7 +1098,7 @@ VkDeviceAddress VkEngine::GetBufferDeviceAddress(VkBuffer buffer) const
 GPUMeshBuffers VkEngine::UploadMesh(std::span<u32> indices, std::span<Vertex> vertices)
 {
     const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
-    const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
+    const size_t indexBufferSize = indices.size() * sizeof(u32);
     const size_t stagingBufferSize = vertexBufferSize + indexBufferSize;
 
     GPUMeshBuffers newSurface{};
@@ -1126,12 +1209,12 @@ void VkEngine::InitBackgroundPipelines()
 	VK_CHECK(vkCreatePipelineLayout(vd.device_, &computeLayout, nullptr, &gradientPipelineLayout_));
 
 	VkShaderModule gradientShader;
-	if (!LoadShader("shaders/gradient_color.comp.spv", vd.device_, &gradientShader)) {
+	if (!load->LoadShader("shaders/gradient_color.comp.spv", vd.device_, &gradientShader)) {
 		LOG(ERR, "Error when building the compute shader");
 	}
 
 	VkShaderModule skyShader;
-	if (!LoadShader("shaders/sky.comp.spv", vd.device_, &skyShader)) {
+	if (!load->LoadShader("shaders/sky.comp.spv", vd.device_, &skyShader)) {
 		LOG(ERR,"Error when building the compute shader");
 	}
 
@@ -1178,12 +1261,12 @@ void VkEngine::InitBackgroundPipelines()
 void VkEngine::InitMeshPipeline()
 {
 	VkShaderModule triangleFragShader;
-	if (!LoadShader("shaders/coloredTriangle.frag.spv", vd.device_, &triangleFragShader)) {
+	if (!load->LoadShader("shaders/texImg.frag.spv", vd.device_, &triangleFragShader)) {
 		LOG(ERR, "Error when building the triangle fragment shader module");
 	}
 
 	VkShaderModule triangleVertexShader;
-	if (!LoadShader("shaders/coloredTriangleMesh.vert.spv", vd.device_, &triangleVertexShader)) {
+	if (!load->LoadShader("shaders/coloredTriangleMesh.vert.spv", vd.device_, &triangleVertexShader)) {
 		LOG(ERR, "Error when building the triangle vertex shader module");
 	}
 
@@ -1195,6 +1278,9 @@ void VkEngine::InitMeshPipeline()
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo = CreatePipelineLayoutInfo();
 	pipelineLayoutInfo.pPushConstantRanges = &bufferRange;
 	pipelineLayoutInfo.pushConstantRangeCount = 1;
+	pipelineLayoutInfo.pSetLayouts = &singleImageDescriptorLayout_;
+	pipelineLayoutInfo.setLayoutCount = 1;
+
 
 	VK_CHECK(vkCreatePipelineLayout(vd.device_, &pipelineLayoutInfo, nullptr, &meshPipelineLayout_));
 
@@ -1206,11 +1292,11 @@ void VkEngine::InitMeshPipeline()
 			.SetPolygonMode(VK_POLYGON_MODE_FILL)
 			.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
 			.SetMultisamplingNone()
-			// .DisableBlending()
+			.DisableBlending()
 			.EnableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
 			.SetColorAttachmentFormat(drawImage_.imageFormat)
-			.SetDepthFormat(depthImage_.imageFormat)
-			.EnableBlendingAdditive();
+			.SetDepthFormat(depthImage_.imageFormat);
+			// .EnableBlendingAdditive();
 
 	meshPipeline_ = pipelineBuilder.BuildPipeline(vd.device_, pipelineBuilder.data);
 
@@ -1225,56 +1311,6 @@ void VkEngine::InitMeshPipeline()
 }
 
 #pragma endregion Pipelines
-
-#pragma region Compute-Shaders
-
-// Function to show error message in a MessageBox
-void ShowErrorMessage(const std::string& message, const std::string& title = "Error") {
-	MessageBoxA(nullptr, message.c_str(), title.c_str(), MB_OK | MB_ICONERROR);
-}
-
-// Function to read file into a vector of uint32_t
-std::vector<uint32_t> ReadFile(const std::string& filePath) {
-	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
-	if (!file.is_open()) {
-		throw std::runtime_error("Failed to open shader file: " + filePath);
-	}
-
-	size_t fileSize = file.tellg();
-	std::vector<uint32_t> buffer(fileSize / sizeof(uint32_t));
-
-	file.seekg(0);
-	file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
-	file.close();
-
-	return buffer;
-}
-
-bool VkEngine::LoadShader(const char* filePath, VkDevice device, VkShaderModule* outShaderModule) {
-	try {
-		std::vector<uint32_t> buffer = ReadFile(filePath);
-
-		VkShaderModuleCreateInfo createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-		createInfo.pNext = nullptr;
-		createInfo.codeSize = buffer.size() * sizeof(uint32_t);
-		createInfo.pCode = buffer.data();
-
-		VkShaderModule shaderModule;
-		if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-			throw std::runtime_error("Failed to create shader for file: " + std::string(filePath));
-		}
-
-		*outShaderModule = shaderModule;
-		return true;
-	}
-	catch (const std::exception& e) {
-		ShowErrorMessage(e.what());
-		return false;
-	}
-}
-
-#pragma endregion Compute-Shaders
 
 #pragma region Descriptor
 
@@ -1293,6 +1329,13 @@ void VkEngine::InitDescriptors()
 		DescriptorLayoutBuilder builder;
 		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 		drawImageDescriptorLayout_ = builder.Build(vd.device_, VK_SHADER_STAGE_COMPUTE_BIT);
+	}
+
+	// Single-Image sampler layout for the mesh draw
+	{
+		DescriptorLayoutBuilder builder;
+		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		singleImageDescriptorLayout_ = builder.Build(vd.device_, VK_SHADER_STAGE_FRAGMENT_BIT);
 	}
 
 
@@ -1358,7 +1401,7 @@ VkDescriptorSetLayout DescriptorLayoutBuilder::Build(VkDevice device, VkShaderSt
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.pNext = pNext,
 		.flags = flags,
-		.bindingCount = static_cast<uint32_t>(bindings.size()),
+		.bindingCount = static_cast<u32>(bindings.size()),
 		.pBindings = bindings.data()
 	};
 
@@ -1369,21 +1412,21 @@ VkDescriptorSetLayout DescriptorLayoutBuilder::Build(VkDevice device, VkShaderSt
 }
 
 
-void DescriptorAllocator::InitPool(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios)
+void DescriptorAllocator::InitPool(VkDevice device, u32 maxSets, std::span<PoolSizeRatio> poolRatios)
 {
 	std::vector<VkDescriptorPoolSize> poolSizes;
 	for (PoolSizeRatio ratio : poolRatios)
 	{
 		poolSizes.push_back(VkDescriptorPoolSize{
 			.type = ratio.type,
-			.descriptorCount = uint32_t(ratio.ratio * maxSets)
+			.descriptorCount = u32(ratio.ratio * maxSets)
 		});
 	}
 
 	VkDescriptorPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
 	pool_info.flags = 0;
 	pool_info.maxSets = maxSets;
-	pool_info.poolSizeCount = (uint32_t)poolSizes.size();
+	pool_info.poolSizeCount = (u32)poolSizes.size();
 	pool_info.pPoolSizes = poolSizes.data();
 
 	vkCreateDescriptorPool(device, &pool_info, nullptr, &pool);
@@ -1454,17 +1497,14 @@ VkRenderingAttachmentInfo VkEngine::AttachmentInfo(VkImageView view, VkClearValu
 
 VkRenderingAttachmentInfo VkEngine::DepthAttachmentInfo(VkImageView view, VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/)
 {
-	VkRenderingAttachmentInfo depthAttachment
-	{
-		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-		.pNext = nullptr,
-		.imageView = view,
-		.imageLayout = layout,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+	VkRenderingAttachmentInfo depthAttachment {};
+	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+	depthAttachment.pNext = nullptr;
 
-	};
-
+	depthAttachment.imageView = view;
+	depthAttachment.imageLayout = layout;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	depthAttachment.clearValue.depthStencil.depth = 0.f;
 
 	return depthAttachment;
@@ -1500,7 +1540,7 @@ void VkEngine::DrawBackground(VkCommandBuffer cmd)
 	vkCmdPushConstants(cmd, gradientPipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
 
 	// Execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
-	vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(drawExtent_.width / 16.0)), static_cast<uint32_t>(std::ceil(drawExtent_.height / 16.0)), 1);
+	vkCmdDispatch(cmd, static_cast<u32>(std::ceil(windowExtent_.width / 16.0)), static_cast<u32>(std::ceil(windowExtent_.height / 16.0)), 1);
 }
 
 void VkEngine::DrawGeometry(VkCommandBuffer cmd)
@@ -1533,7 +1573,7 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 
     VkRenderingAttachmentInfo colorAttachment = AttachmentInfo(drawImage_.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
 	VkRenderingAttachmentInfo depthAttachment = DepthAttachmentInfo(depthImage_.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    VkRenderingInfo renderInfo = RenderInfo(drawExtent_, &colorAttachment, &depthAttachment);
+    VkRenderingInfo renderInfo = RenderInfo(windowExtent_, &colorAttachment, &depthAttachment);
     vkCmdBeginRendering(cmd, &renderInfo);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline_);
@@ -1542,8 +1582,8 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
     VkViewport viewport = {};
     viewport.x = 0;
     viewport.y = 0;
-    viewport.width = drawExtent_.width;
-    viewport.height = drawExtent_.height;
+    viewport.width = windowExtent_.width;
+    viewport.height = windowExtent_.height;
     viewport.minDepth = 0.f;
     viewport.maxDepth = 1.f;
     vkCmdSetViewport(cmd, 0, 1, &viewport);
@@ -1551,13 +1591,25 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
     VkRect2D scissor = {};
     scissor.offset.x = 0;
     scissor.offset.y = 0;
-    scissor.extent.width = drawExtent_.width;
-    scissor.extent.height = drawExtent_.height;
+    scissor.extent.width = windowExtent_.width;
+    scissor.extent.height = windowExtent_.height;
     vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+	//bind a texture
+	VkDescriptorSet imageSet = GetCurrentFrame().frameDescriptors_.Allocate(vd.device_, singleImageDescriptorLayout_);
+	{
+    	VkDescriptorWriter imgWrite;
+    	imgWrite.WriteImage(0, errorCheckerboardImage_.imageView, defaultSamplerNearest_,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+    	imgWrite.UpdateSet(vd.device_, imageSet);
+	}
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout_, 0, 1, &imageSet, 0, nullptr);
+
 
 	// Calculate view and projection matrices
     glm::mat4 view = glm::translate(glm::vec3{ 0, 0, -5 });
-    glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)drawExtent_.width / (float)drawExtent_.height, 0.1f, 10000.f);
+    glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)windowExtent_.width / (float)windowExtent_.height, 0.1f, 10000.f);
 
     // Invert the Y direction on projection matrix so that we are more similar to OpenGL and glTF axis
     projection[1][1] *= -1;
@@ -1576,15 +1628,79 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 	vkCmdEndRendering(cmd);
 }
 
-void VkEngine::InitDefaultData() {
-    if (!meshLoaded_) {
+void VkEngine::InitDefaultData()
+{
+    if (!meshLoaded_)
+    {
         auto loadedMeshes = loader_.loadGltfMeshes(this, "assets\\basicmesh.glb");
-        if (loadedMeshes.has_value()) {
+        if (loadedMeshes.has_value())
+        {
             testMeshes = loadedMeshes.value();
             meshLoaded_ = true;
         }
     }
+
+    // 3 default textures, white, grey, black. 1 pixel each
+    {
+        static u32 white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
+        whiteImage_ = CreateImageData(&white, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+
+        static u32 grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
+        greyImage_ = CreateImageData(&grey, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+
+        static u32 black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
+        blackImage_ = CreateImageData(&black, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+    }
+
+    // Checkerboard image
+    {
+        static u32 magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
+        static u32 black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
+
+        SafeArray<u32, static_cast<size_t>(16 * 16)> pixels{};
+        for (int y = 0; y < 16; y++)
+        {
+            for (int x = 0; x < 16; x++)
+            {
+                pixels[y * 16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
+            }
+        }
+
+        errorCheckerboardImage_ = CreateImageData(pixels.data(), VkExtent3D{ 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+    }
+
+    // Create samplers
+    {
+        VkSamplerCreateInfo sampler = {};
+        sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+
+        sampler.magFilter = VK_FILTER_NEAREST;
+        sampler.minFilter = VK_FILTER_NEAREST;
+        if (vkCreateSampler(vd.device_, &sampler, nullptr, &defaultSamplerNearest_) != VK_SUCCESS)
+        {
+            LOG(ERR, "Failed to create nearest sampler");
+        }
+
+        sampler.magFilter = VK_FILTER_LINEAR;
+        sampler.minFilter = VK_FILTER_LINEAR;
+        if (vkCreateSampler(vd.device_, &sampler, nullptr, &defaultSamplerLinear_) != VK_SUCCESS)
+        {
+            LOG(ERR, "Failed to create linear sampler");
+        }
+    }
+
+    // Add destruction callbacks to the deletion queue
+    mainDeletionQueue_.push_function([&]() {
+        vkDestroySampler(vd.device_, defaultSamplerNearest_, nullptr);
+        vkDestroySampler(vd.device_, defaultSamplerLinear_, nullptr);
+
+        DestroyImage(whiteImage_);
+        DestroyImage(greyImage_);
+        DestroyImage(blackImage_);
+        DestroyImage(errorCheckerboardImage_);
+    });
 }
+
 
 void VkEngine::Draw()
 {
@@ -1607,8 +1723,8 @@ void VkEngine::Draw()
 
     VkCommandBufferBeginInfo cmdBeginInfo = CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-	drawExtent_.height = std::min(swapchainExtent_.height, drawImage_.imageExtent.height) * renderScale;
-	drawExtent_.width = std::min(swapchainExtent_.width, drawImage_.imageExtent.width) * renderScale;
+	windowExtent_.height = static_cast<u32>(std::min(swapchainExtent_.height, drawImage_.imageExtent.height) * renderScale);
+	windowExtent_.width = static_cast<u32>(std::min(swapchainExtent_.width, drawImage_.imageExtent.width) * renderScale);
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
@@ -1634,7 +1750,7 @@ void VkEngine::Draw()
 	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// Copy image from drawImage_.image to swapchainImages_[swapchainImageIndex]
-	CopyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], drawExtent_, swapchainExtent_);
+	CopyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], windowExtent_, swapchainExtent_);
 
 	// Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL layout for rendering ImGui
 	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);

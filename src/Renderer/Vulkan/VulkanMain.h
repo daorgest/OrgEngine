@@ -62,15 +62,6 @@ namespace GraphicsAPI::Vulkan
 		ComputePushConstants data;
 	};
 
-	struct AllocatedImage
-	{
-		VkImage image;
-		VkImageView imageView;
-		VmaAllocation allocation;
-		VkExtent3D imageExtent;
-		VkFormat imageFormat;
-	};
-
 	struct FrameData
 	{
 		VkSemaphore swapChainSemaphore_, renderSemaphore_;
@@ -81,16 +72,7 @@ namespace GraphicsAPI::Vulkan
 		VkDescriptor frameDescriptors_;
 	};
 
-	struct VulkanData
-	{
-		VkInstance instance_{VK_NULL_HANDLE};
-		VkDebugUtilsMessengerEXT dbgMessenger_{VK_NULL_HANDLE};
-		VkPhysicalDevice physicalDevice_{VK_NULL_HANDLE};
-		VkDevice device_{VK_NULL_HANDLE};
-		VkSurfaceKHR surface_{VK_NULL_HANDLE};
-	};
-
-	class VkEngine
+	class VkEngine : public ResourceLoader
 	{
 	public:
 		explicit VkEngine(Platform::WindowContext *winManager);
@@ -114,6 +96,8 @@ namespace GraphicsAPI::Vulkan
 		void InitMeshPipeline();
 		void InitDefaultData();
 
+		void CreateCheckerboardImage();
+		void CreateSamplers();
 		// Rendering
 		void Draw();
 		void ResizeSwapchain();
@@ -133,8 +117,8 @@ namespace GraphicsAPI::Vulkan
 		VkComputePipelineCreateInfo ComputePipelineCreateInfo(VkPipelineShaderStageCreateInfo shaderStage,
 															  VkPipelineLayout layout);
 		VkPipelineLayoutCreateInfo CreatePipelineLayoutInfo();
-		VkCommandPoolCreateInfo CommandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags);
-		VkCommandBufferAllocateInfo CommandBufferAllocateInfo(VkCommandPool pool, uint32_t count);
+		VkCommandPoolCreateInfo CommandPoolCreateInfo(u32 queueFamilyIndex, VkCommandPoolCreateFlags flags);
+		VkCommandBufferAllocateInfo CommandBufferAllocateInfo(VkCommandPool pool, u32 count);
 		VkCommandBufferBeginInfo CommandBufferBeginInfo(VkCommandBufferUsageFlags flags);
 		VkSemaphoreSubmitInfo SemaphoreSubmitInfo(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore);
 		VkCommandBufferSubmitInfo CommandBufferSubmitInfo(VkCommandBuffer cmd);
@@ -159,7 +143,6 @@ namespace GraphicsAPI::Vulkan
 		void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout,
 							 VkImageLayout newLayout) const;
 		VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask) const;
-		bool LoadShader(const char *filePath, VkDevice device, VkShaderModule *outShaderModule);
 		VkRenderingInfo RenderInfo(VkExtent2D extent, VkRenderingAttachmentInfo *colorAttachment,
 								   VkRenderingAttachmentInfo *depthAttachment);
 		VkRenderingAttachmentInfo AttachmentInfo(VkImageView view, VkClearValue *clear, VkImageLayout layout);
@@ -170,10 +153,21 @@ namespace GraphicsAPI::Vulkan
 		void CreateSwapchain(u32 width, u32 height);
 		void DestroySwapchain() const;
 
+		// Textures
+		AllocatedImage CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+		AllocatedImage CreateImageData(void *data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage,
+								   bool mipmapped = false);
+		AllocatedImage CreateDefaultImage(const glm::vec4& color, const std::string& name);
+		void DestroyImage(const AllocatedImage &img);
+
 		// Static Utility Functions
 		static void CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData &vd);
 		static void PrintAvailableExtensions();
-		static std::string decodeDriverVersion(uint32_t driverVersion, uint32_t vendorID);
+		static std::string decodeDriverVersion(u32 driverVersion, u32 vendorID);
+
+		VkDescriptorSetLayout gpuSceneDataDescriptorLayout_{};
+		VkFormat swapchainImageFormat_;
+		AllocatedImage depthImage_{};
 
 	private:
 		bool isInit = false;
@@ -186,14 +180,14 @@ namespace GraphicsAPI::Vulkan
 
 		Platform::WindowContext* winManager_;
 		Platform::Win32* win32_;
+		VkLoader* load;
 		VulkanData vd;
 		VmaAllocator allocator_;
 		VkQueue graphicsQueue_{};
-		uint32_t graphicsQueueFamily_{};
+		u32 graphicsQueueFamily_{};
 
 		// Swapchain properties
 		VkSwapchainKHR swapchain_{VK_NULL_HANDLE};
-		VkFormat swapchainImageFormat_;
 		std::vector<VkImage> swapchainImages_;
 		std::vector<VkImageView> swapchainImageViews_;
 		VkExtent2D swapchainExtent_{};
@@ -205,16 +199,23 @@ namespace GraphicsAPI::Vulkan
 
 		// Draw resources
 		AllocatedImage drawImage_{};
-		AllocatedImage depthImage_;
-		VkExtent2D drawExtent_{};
+		AllocatedImage whiteImage_{};
+		AllocatedImage blackImage_{};
+		AllocatedImage greyImage_{};
+		AllocatedImage errorCheckerboardImage_{};
+
+		VkSampler defaultSamplerLinear_{};
+		VkSampler defaultSamplerNearest_{};
+
+		VkExtent2D windowExtent_{};
 
 		DescriptorAllocator globalDescriptorAllocator{};
 
 		VkDescriptorSet drawImageDescriptors_{};
 		VkDescriptorSetLayout drawImageDescriptorLayout_{};
+		VkDescriptorSetLayout singleImageDescriptorLayout_{};
 		VkPipeline gradientPipeline_{};
 		VkPipelineLayout gradientPipelineLayout_{};
-		VkDescriptorSetLayout gpuSceneDataDescriptorLayout_{};
 		GPUSceneData sceneData{};
 
 		// Immediate GPU Commands

@@ -3,7 +3,17 @@
 //
 #pragma once
 #include "VulkanHeader.h"
-#include <filesystem>
+#include "../ResourceLoader.h"
+#define STB_IMAGE_IMPLEMENTATION
+// #include <stb_image.h>
+
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+
+#include <fastgltf/core.hpp>
+#include <fastgltf/glm_element_traits.hpp>
+#include <fastgltf/tools.hpp>
+
 
 namespace GraphicsAPI::Vulkan
 {
@@ -24,10 +34,18 @@ namespace GraphicsAPI::Vulkan
 	// forward declaration
 	class VkEngine;
 
-	class VkLoader
+	class VkLoader : public ResourceLoader
 	{
 	public:
-		std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VkEngine *engine,
-																			  const std::filesystem::path &filePath);
+		bool LoadShader(const std::filesystem::path &filePath, VkDevice device, VkShaderModule *outShaderModule);
+		std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(
+			VkEngine *engine,const std::filesystem::path &filePath);
+	private:
+		void loadIndices(const fastgltf::Accessor& indexAccessor, std::vector<u32>& indices,
+			const std::vector<Vertex>& vertices, const fastgltf::Asset& gltf);
+		void loadVertices(const fastgltf::Accessor& posAccessor, std::vector<Vertex>& vertices, const fastgltf::Asset& gltf);
+		void loadAttribute(const fastgltf::Primitive &primitive, const std::string &attributeName,
+						   const fastgltf::Asset								 &gltf,
+						   const std::function<void(const fastgltf::Accessor &)> &accessorFunc);
 	};
 } // namespace GraphicsAPI::Vulkan

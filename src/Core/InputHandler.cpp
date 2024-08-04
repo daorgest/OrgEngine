@@ -1,46 +1,70 @@
 //
 // Created by Orgest on 4/23/2024.
 //
-#include "../Core/InputHandler.h"
+#include "InputHandler.h"
+
 #include "Logger.h"
 
+// Controller::Controller(u32 index)
+// {
+// }
 
-// TODO: INTEGRATEING THIS
-void Input::updateUsingController()
+void Controller::Update()
 {
-	// Check if any Xbox controller button is pressed or held
-	usingController = false;
-	for (const auto& button : xboxButtons)
+	PollInput();
+}
+
+void Controller::PollInput()
+{
+	XINPUT_STATE state;
+	ZeroMemory(&state, sizeof(XINPUT_STATE));
+
+
+	DWORD result = XInputGetState(gamepadIndex, &state) ;
+	if (result == ERROR_SUCCESS)
 	{
-		if (button.pressed || button.held)
-		{
-			usingController = true;
-			break;
-		}
+		currentState.Buttons =		state.Gamepad.wButtons;
+		currentState.LeftStickX =	state.Gamepad.sThumbLX;
+		currentState.LeftStickY =	state.Gamepad.sThumbLY;
+		currentState.RightStickX =	state.Gamepad.sThumbRX;
+		currentState.RightStickY =	state.Gamepad.sThumbRY;
+		currentState.LeftTrigger =	state.Gamepad.bLeftTrigger;
+		currentState.RightTrigger = state.Gamepad.bRightTrigger;
 	}
-
-	// If no controller input detected, check if any keyboard or mouse button is pressed or held
-	if (!usingController)
-	{
-		for (const auto& key : keyboard)
-		{
-			if (key.pressed || key.held)
-			{
-				return;
-			}
-		}
-
-		if (lMouseButton.pressed || lMouseButton.held ||
-			rMouseButton.pressed || rMouseButton.held ||
-			mouse4Button.pressed || mouse4Button.held ||
-			mouse5Button.pressed || mouse5Button.held)
-		{
-			return;
-		}
-
-		usingController = false;
+	else {
+		currentState = {};
 	}
 }
+
+// u8 Controller::GetTriggerValues(Controller& controller) const
+// {
+// 	switch (controller)
+// 	{
+// 		case Trigger::LeftTrigger:	return currentState.LeftTrigger;
+// 		case Trigger::RightTrigger: return currentState.RightTrigger;
+// 		default:					return 0;
+// 	}
+// }
+//
+// i16 Controller::GetStickValues(Controller& controller) const
+// {
+// 	switch (controller)
+// 	{
+// 		case Stick::LeftStickX:		return currentState.LeftStickX;
+// 		case Stick::LeftStickY:		return currentState.LeftStickY;
+// 		case Stick::RightStickX:	return currentState.RightStickX;
+// 		case Stick::RightStickY:	return currentState.RightStickY;
+// 		default:					return 0;
+// 	}
+// }
+//
+// void Controller::ProcessControllerAfter(Controller& controller)
+// {
+// 	for (const int i : 14)
+// 	{
+//
+// 	}
+// }
 
 void processInputAfter(Input& input)
 {
@@ -51,11 +75,10 @@ void processInputAfter(Input& input)
 		input.keyboard[i].altWasDown = 0;
 	}
 
-	for (auto& button : input.xboxButtons)
+	for (int i = 0; i < Controller::XboxButton::BUTTONS_CONUNT; i++)
 	{
-		button.pressed = 0;
-		button.released = 0;
-		button.altWasDown = 0;
+		input.xboxButtons[i].pressed = 0;
+		input.xboxButtons[i].released = 0;
 	}
 
 	input.lMouseButton.pressed = 0;
@@ -67,7 +90,7 @@ void processInputAfter(Input& input)
 	input.rMouseButton.altWasDown = 0;
 
 
-	ZeroMemory(input.typedInput, sizeof(input.typedInput));
+	ZeroMemory(static_cast<void*>(input.typedInput), sizeof(input.typedInput));
 }
 
 void resetInput(Input& input)
@@ -75,10 +98,10 @@ void resetInput(Input& input)
 	input.lMouseButton = {};
 	input.rMouseButton = {};
 
-	ZeroMemory(input.keyboard.data(), input.keyboard.size() * sizeof(Button));
-	ZeroMemory(input.xboxButtons.data(), input.xboxButtons.size() * sizeof(Button));
-	ZeroMemory(input.typedInput, sizeof(input.typedInput));
+	input.keyboard.fill(Button{});
+	input.typedInput.fill(0);
 }
+
 
 //newState == 1 means pressed else released
 void processEventButton(Button& b, bool newState)
@@ -102,3 +125,4 @@ void processEventButton(Button& b, bool newState)
 		b.released = true;
 	}
 }
+

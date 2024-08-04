@@ -3,7 +3,7 @@
 //
 #pragma once
 
-#ifndef DX11_BUILD
+#ifdef DX11_BUILD
 
 #include <d3d11.h>
 #include <dxgi1_6.h>

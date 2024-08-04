@@ -56,7 +56,7 @@ VkPipeline PipelineBuilder::BuildPipeline(VkDevice device, const PipelineData& d
     VkGraphicsPipelineCreateInfo pipelineInfo = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
     pipelineInfo.pNext = &data.config.renderInfo;
 
-    pipelineInfo.stageCount = static_cast<uint32_t>(data.shaderStages.stages.size());
+    pipelineInfo.stageCount = static_cast<u32>(data.shaderStages.stages.size());
     pipelineInfo.pStages = data.shaderStages.stages.data();
     pipelineInfo.pVertexInputState = &vertexInputInfo;
     pipelineInfo.pInputAssemblyState = &data.config.inputAssembly;
@@ -81,7 +81,7 @@ VkPipeline PipelineBuilder::BuildPipeline(VkDevice device, const PipelineData& d
     if (result != VK_SUCCESS)
     {
         LOG(ERR, "Failed to create graphics pipeline");
-        throw std::runtime_error("Failed to create graphics pipeline");
+    	return VK_NULL_HANDLE;
     }
 
     return pipeline;
@@ -123,7 +123,7 @@ PipelineBuilder& PipelineBuilder::SetMultisamplingNone()
     data.config.multisampling = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
         .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-        .sampleShadingEnable = VK_FALSE,
+        // .sampleShadingEnable = VK_FALSE,
         .minSampleShading = 1.0f,
         .pSampleMask = nullptr,
         .alphaToCoverageEnable = VK_FALSE,

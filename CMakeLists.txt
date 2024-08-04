@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Optionally define the flag based on some condition
-option(USE_DIRECTX11 "Use DirectX 11 Renderer" OFF)
+option(USE_DIRECTX11 "Use DirectX 11 Renderer" FALSE)
 option(USE_VULKAN "Use Vulkan Renderer" TRUE)
 
 
@@ -59,7 +59,7 @@ target_include_directories(OrgEngine PRIVATE
         ${Vulkan_INCLUDE_DIRS}
         "${CMAKE_SOURCE_DIR}/3rdParty/vma/"
         "${IMGUI_DIR}"
-        libs/3rdParty/stb
+#        libs/3rdParty/stb
 )
 
 # Add ImGui sources to the executable
@@ -68,6 +68,7 @@ option(FASTGLTF_COMPILE_AS_CPP20 "Compile FastGLTF as C++20" ON)
 
 # Link libraries
 target_link_libraries(OrgEngine PRIVATE
+        xinput.lib  # for now
         Vulkan::Vulkan
         fmt::fmt
         vk-bootstrap::vk-bootstrap

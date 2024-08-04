@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <array>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -12,7 +11,7 @@
 #include <span>
 #include <string>
 #include <vector>
-#include "../../Core/PrimTypes.h"
+#include "../../Core/Array.h"
 
 #ifdef _WIN32
 #include "../../Platform/PlatformWindows.h"
@@ -41,6 +40,16 @@
 
 namespace GraphicsAPI::Vulkan
 {
+
+	struct VulkanData
+	{
+		VkInstance instance_{VK_NULL_HANDLE};
+		VkDebugUtilsMessengerEXT dbgMessenger_{VK_NULL_HANDLE};
+		VkPhysicalDevice physicalDevice_{VK_NULL_HANDLE};
+		VkDevice device_{VK_NULL_HANDLE};
+		VkSurfaceKHR surface_{VK_NULL_HANDLE};
+	};
+
 	struct AllocatedBuffer
 	{
 		VkBuffer buffer;
@@ -70,5 +79,14 @@ namespace GraphicsAPI::Vulkan
 	{
 		glm::mat4 worldMatrix;
 		VkDeviceAddress vertexBuffer;
+	};
+
+	struct AllocatedImage
+	{
+		VkImage image;
+		VkImageView imageView;
+		VmaAllocation allocation;
+		VkExtent3D imageExtent;
+		VkFormat imageFormat;
 	};
 }

@@ -1,7 +1,7 @@
 //
 // Created by Orgest on 7/4/2024.
 //
-#ifndef DX11_BUILD
+#ifdef DX11_BUILD
 #include "D3D11Main.h"
 
 #pragma comment(lib, "d3d11.lib")
