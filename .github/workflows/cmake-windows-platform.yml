@@ -18,33 +18,29 @@ jobs:
         build_type: [Release, Debug]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code and submodules
+        uses: actions/checkout@v4
         with:
           submodules: true
 
-      - name: VulkanCI
+      - name: Install Vulkan SDK
         uses: NcStudios/VulkanCI@v1.1
         with:
           sdkVersion: 1.3.283.0
           installPath: ${{ github.workspace }}/VulkanSDK
 
-      - name: Set up Vulkan SDK
-        run: |
-          echo "Setting up Vulkan SDK environment"
-          echo "${{ github.workspace }}/VulkanSDK/1.3.283.0/Environment" >> $GITHUB_ENV
+      - name: Set up Vulkan SDK environment
+        run: echo "${{ github.workspace }}/VulkanSDK/1.3.283.0/Environment" >> $GITHUB_ENV
 
-      - name: Set up CMake
+      - name: Set up CMake and Ninja
         uses: lukka/get-cmake@v3.30.1
         with:
           cmakeVersion: latest
           ninjaVersion: latest
 
-      - name: Update submodules
-        run: git submodule update --init --recursive
-
       - name: Configure CMake
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DVULKAN_SDK="${{ github.workspace }}/VulkanSDK/1.3.283.0"
 
-      - name: Build
+      - name: Build with CMake
         run: cmake --build build --config ${{ matrix.build_type }}
