@@ -4,36 +4,18 @@
 
 #include "PlatformWindows.h"
 
+// #include "../Renderer/Vulkan/VulkanMain.h"
+
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace Platform
 {
-    // Definition of the static member variable
-    Input Win32::input;
 
     Win32::Win32(WindowContext* windowContext) : windowContext_(windowContext) {}
 
     Win32::~Win32()
     {
-        DestroyAppWindow();
-    }
-
-    bool Win32::DestroyAppWindow()
-    {
-        if (windowContext_->hwnd)
-        {
-            if (!DestroyWindow(windowContext_->hwnd))
-            {
-                return false;
-            }
-            windowContext_->hwnd = nullptr;
-
-            if (!UnregisterClass(appName_, windowContext_->hInstance))
-            {
-                return false;
-            }
-        }
-        return true;
+    	DestroyWindow(windowContext_->hwnd);
     }
 
     LRESULT CALLBACK Win32::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -47,42 +29,42 @@ namespace Platform
         {
         case WM_SYSKEYDOWN:
         case WM_KEYDOWN:
-            if (wp < Button::BUTTONS_COUNT)
-            {
-                processEventButton(input.keyboard[wp], true); // Key pressed
-            }
+        	if (wp < static_cast<WPARAM>(Keyboard::Key::BUTTONS_COUNT))
+        	{
+        		// input.keyboard.processButtonEvent(static_cast<Keyboard::Key>(wp), true); // Key pressed
+        	}
             break;
         case WM_SYSKEYUP:
         case WM_KEYUP:
-            if (wp < Button::BUTTONS_COUNT)
-            {
-                processEventButton(input.keyboard[wp], false); // Key NOT pressed
-            }
+        	if (wp < static_cast<WPARAM>(Keyboard::Key::BUTTONS_COUNT))
+        	{
+        		// input.keyboard.processButtonEvent(static_cast<Keyboard::Key>(wp), false); // Key pressed
+        	}
             break;
         case WM_MOUSEMOVE:
             // input.cursorX = GET_X_LPARAM(lp);
             // input.cursorY = GET_Y_LPARAM(lp);
             break;
         case WM_LBUTTONDOWN:
-            processEventButton(input.lMouseButton, true);
-            break;
+        	// input.processKeyboardEvent(input.lMouseButton, true);
+        	break;
         case WM_LBUTTONUP:
-            processEventButton(input.lMouseButton, false);
-            break;
+        	// input.processKeyboardEvent(input.lMouseButton, false);
+        	break;
         case WM_RBUTTONDOWN:
-            processEventButton(input.rMouseButton, true);
-            break;
+        	// input.processKeyboardEvent(input.rMouseButton, true);
+        	break;
         case WM_RBUTTONUP:
-            processEventButton(input.rMouseButton, false);
-            break;
+        	// input.processKeyboardEvent(input.rMouseButton, false);
+        	break;
         case WM_SETFOCUS:
             LOG(INFO, "Window in focus");
-            input.focused = true;
+            // input.focused = true;
             break;
         case WM_KILLFOCUS:
             LOG(INFO, "Window out of focus");
-            input.focused = false;
-            resetInput(input);
+         //    input.focused = false;
+        	// input.reset();
             break;
         case WM_CLOSE:
             PostQuitMessage(0);
@@ -98,8 +80,8 @@ namespace Platform
     bool Win32::Init()
     {
 
-    	// Ensure DPI Awareness for high-DPI displays
-    	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    	// // Ensure DPI Awareness for high-DPI displays
+    	// SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     	const WNDCLASSEX wcex
 		{
@@ -126,7 +108,7 @@ namespace Platform
 #else
             L"OrgEngine - Release",          // Window text (Release version)
 #endif
-            WS_OVERLAPPEDWINDOW,
+            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
             windowContext_->windowPosX,
             windowContext_->windowPosY,
             static_cast<i32>(windowContext_->screenWidth),
@@ -167,14 +149,6 @@ namespace Platform
         else
         {
             return static_cast<double>(GetTickCount64()) / 1000.0;
-        }
-    }
-
-    void Win32::LogInputStates() const
-    {
-        if (input.keyboard[Button::A].pressed)
-        {
-            LOG(INFO, "A has been pressed");
         }
     }
 }
