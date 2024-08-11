@@ -31,8 +31,8 @@ namespace GraphicsAPI::Vulkan
 
 		VkDescriptorPool pool;
 
-		void InitPool(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios);
-		void ClearDescriptors(VkDevice device);
+		void InitPool(VkDevice device, u32 maxSets, std::span<PoolSizeRatio> poolRatios);
+		void ClearDescriptors(VkDevice device) const;
 		void DestroyPool(VkDevice device);
 
 		VkDescriptorSet Allocate(VkDevice device, VkDescriptorSetLayout layout);

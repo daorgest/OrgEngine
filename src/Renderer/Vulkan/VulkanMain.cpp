@@ -2,6 +2,7 @@
 // Created by Orgest on 4/12/2024.
 //
 
+#include "backends/imgui_impl_win32.h"
 #ifdef VULKAN_BUILD
 #include "VulkanMain.h"
 #include "VkBootstrap.h"
@@ -21,11 +22,10 @@ constexpr bool bUseValidationLayers = false;
 using namespace GraphicsAPI::Vulkan;
 
 VkEngine::VkEngine(Platform::WindowContext *winManager) :
-	winManager_(winManager), win32_(nullptr), allocator_(nullptr), swapchainImageFormat_(), frames_{},
-	depthImage_(), meshPipelineLayout_(nullptr), meshPipeline_(nullptr), rectangle()
+	swapchainImageFormat_(), winManager_(winManager), allocator_(nullptr),
+	frames_{}, meshPipelineLayout_(nullptr), meshPipeline_(nullptr), rectangle()
 {
-	// // if (winManager)
-	//      Init();
+
 }
 
 VkEngine::~VkEngine()
@@ -77,6 +77,7 @@ void VkEngine::Run()
 				}
 			}
 		}
+		// win32_->input.update();
 
 		// If WM_QUIT was received, exit the loop
 		if (bQuit)
@@ -106,16 +107,17 @@ void VkEngine::Run()
 
 		// Draw the frame
 		Draw();
+		// win32_->input.reset();
 	}
 }
 
-void VkEngine::UpdateFPS() {
-	static double lastFPSTime = win32_->GetAbsoluteTime();
-	double currentFPSTime = win32_->GetAbsoluteTime();
-	double elapsed = currentFPSTime - lastFPSTime;
-	lastFPSTime = currentFPSTime;
-	fps_ = 1.0 / elapsed * 1;
-}
+// void VkEngine::UpdateFPS() {
+// 	static double lastFPSTime = win32_->GetAbsoluteTime();
+// 	double currentFPSTime = win32_->GetAbsoluteTime();
+// 	double elapsed = currentFPSTime - lastFPSTime;
+// 	lastFPSTime = currentFPSTime;
+// 	fps_ = 1.0 / elapsed * 1;
+// }
 
 void VkEngine::ResizeSwapchain()
 {
@@ -164,30 +166,30 @@ void VkEngine::RenderMemoryUsageImGui() {
 	}
 }
 
-void VkEngine::RenderQuickStatsImGui() {
-	// Update FPS every 0.6 seconds
-	static double lastFPSTime = win32_->GetAbsoluteTime();
-	double currentFPSTime = win32_->GetAbsoluteTime();
-	if ((currentFPSTime - lastFPSTime) > 0.6) {
-		UpdateFPS();
-		lastFPSTime = currentFPSTime;
-	}
-
-	// Query current resolution
-	u32 width, height;
-	winManager_->GetWindowSize(width, height);
-
-	// Display the stats in a menu on the bottom left
-	ImGui::SetNextWindowPos(ImVec2(10, ImGui::GetIO().DisplaySize.y - 220), ImGuiCond_Always);
-	ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_Always);
-	if (ImGui::Begin("Quick Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
-		ImGui::Text("FPS: %.2f", fps_);
-		ImGui::Text("Window Resolution: %ux%u", width, height);
-		ImGui::Text("Internal Resoultion: %ux%u", windowExtent_.width, windowExtent_.height);
-		RenderMemoryUsageImGui();
-	}
-	ImGui::End();
-}
+// void VkEngine::RenderQuickStatsImGui() {
+// 	// Update FPS every 0.6 seconds
+// 	static double lastFPSTime = win32_->GetAbsoluteTime();
+// 	double currentFPSTime = win32_->GetAbsoluteTime();
+// 	if ((currentFPSTime - lastFPSTime) > 0.6) {
+// 		UpdateFPS();
+// 		lastFPSTime = currentFPSTime;
+// 	}
+//
+// 	// Query current resolution
+// 	u32 width, height;
+// 	winManager_->GetWindowSize(width, height);
+//
+// 	// Display the stats in a menu on the bottom left
+// 	ImGui::SetNextWindowPos(ImVec2(10, ImGui::GetIO().DisplaySize.y - 220), ImGuiCond_Always);
+// 	ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_Always);
+// 	if (ImGui::Begin("Quick Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
+// 		ImGui::Text("FPS: %.2f", fps_);
+// 		ImGui::Text("Window Resolution: %ux%u", width, height);
+// 		ImGui::Text("Internal Resoultion: %ux%u", windowExtent_.width, windowExtent_.height);
+// 		RenderMemoryUsageImGui();
+// 	}
+// 	ImGui::End();
+// }
 
 void VkEngine::RenderMainMenu() {
 	if (ImGui::BeginMainMenuBar()) {
@@ -218,7 +220,7 @@ void VkEngine::RenderMainMenu() {
 
 void VkEngine::RenderUI() {
 	RenderMainMenu();
-	RenderQuickStatsImGui();
+	// RenderQuickStatsImGui();
 }
 
 #pragma endregion Run
@@ -302,10 +304,10 @@ void VkEngine::InitImgui()
 	ImGui_ImplVulkan_CreateFontsTexture();
 
 	// add the destroy the imgui created structures
-	mainDeletionQueue_.push_function([=]()
+	mainDeletionQueue_.pushFunction([device = vd.device_, pool = imguiPool]
 	{
 		ImGui_ImplVulkan_Shutdown();
-		vkDestroyDescriptorPool(vd.device_, imguiPool, nullptr);
+		vkDestroyDescriptorPool(device, pool, nullptr);
 	});
 }
 
@@ -380,7 +382,7 @@ void VkEngine::InitVulkan()
 		.instance = vd.instance_,
 	};
 	vmaCreateAllocator(&allocInfo, &allocator_);
-	mainDeletionQueue_.push_function([&]()
+	mainDeletionQueue_.pushFunction([&]()
 	{
 		vmaDestroyAllocator(allocator_);
 	});
@@ -403,15 +405,15 @@ void VkEngine::Cleanup()
 	{
 		vkDeviceWaitIdle(vd.device_);
 
-		for (int i = 0; i < FRAME_OVERLAP; i++)
+		for (auto & frame : frames_)
 		{
 			// Destroy sync objects
-			vkDestroyFence(vd.device_, frames_[i].renderFence_, nullptr);
-			vkDestroySemaphore(vd.device_, frames_[i].renderSemaphore_, nullptr);
-			vkDestroySemaphore(vd.device_, frames_[i].swapChainSemaphore_, nullptr);
+			vkDestroyFence(vd.device_, frame.renderFence_, nullptr);
+			vkDestroySemaphore(vd.device_, frame.renderSemaphore_, nullptr);
+			vkDestroySemaphore(vd.device_, frame.swapChainSemaphore_, nullptr);
 
-			frames_[i].deletionQueue_.flush();
-			vkDestroyCommandPool(vd.device_, frames_[i].commandPool_, nullptr);
+			frame.deletionQueue_.Flush();
+			vkDestroyCommandPool(vd.device_, frame.commandPool_, nullptr);
 		}
 
 		for (const auto &mesh : testMeshes)
@@ -420,19 +422,13 @@ void VkEngine::Cleanup()
 			DestroyBuffer(mesh->meshBuffers.vertexBuffer);
 		}
 
-		mainDeletionQueue_.flush();
-		DestroySwapchain();
+		mainDeletionQueue_.Flush();
+		// DestroySwapchain();
 		vkDestroySurfaceKHR(vd.instance_, vd.surface_, nullptr);
 		vkDestroyDevice(vd.device_, nullptr);
 		vkb::destroy_debug_utils_messenger(vd.instance_, vd.dbgMessenger_);
 		vkDestroyInstance(vd.instance_, nullptr);
-
-		// Call the DestroyAppWindow method to destroy the Win32 window
-		if (win32_)
-		{
-			win32_->DestroyAppWindow();
-		}
-
+		// TODO: MOVE THIS OVER TO win32's WM_QUIT
 		isInit = false;
 	}
 }
@@ -498,7 +494,8 @@ void VkEngine::CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData& vd
 		           L"Error", MB_OK | MB_ICONERROR);
 		exit(1);
 	}
-	VkWin32SurfaceCreateInfoKHR createInfo{
+	VkWin32SurfaceCreateInfoKHR createInfo
+	{
 		.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
 		.hinstance = hInstance,
 		.hwnd = hwnd,
@@ -587,7 +584,7 @@ void VkEngine::InitSwapChain()
 	VK_CHECK(vkCreateImageView(vd.device_, &depthImageViewInfo, nullptr, &depthImage_.imageView));
 
 	// Add cleanup to deletion queue
-	mainDeletionQueue_.push_function([this]()
+	mainDeletionQueue_.pushFunction([this]()
 	{
 		vkDestroyImageView(vd.device_, drawImage_.imageView, nullptr);
 		vmaDestroyImage(allocator_, drawImage_.image, drawImage_.allocation);
@@ -625,7 +622,7 @@ void VkEngine::InitCommands()
 
 	VK_CHECK(vkAllocateCommandBuffers(vd.device_, &cmdAllocInfo, &immCommandBuffer_));
 
-	mainDeletionQueue_.push_function([=]()
+	mainDeletionQueue_.pushFunction([=]()
 	{
 		vkDestroyCommandPool(vd.device_, immCommandPool_, nullptr);
 	});
@@ -673,7 +670,7 @@ VkCommandPoolCreateInfo VkEngine::CommandPoolCreateInfo(u32 queueFamilyIndex, Vk
 		.pNext = nullptr,
 		.flags = flags,
 		.queueFamilyIndex = queueFamilyIndex
-	};;
+	};
 }
 
 VkCommandBufferAllocateInfo VkEngine::CommandBufferAllocateInfo(VkCommandPool pool, u32 count /*= 1*/)
@@ -707,7 +704,8 @@ VkCommandBufferBeginInfo VkEngine::CommandBufferBeginInfo(VkCommandBufferUsageFl
 
 VkSemaphoreSubmitInfo VkEngine::SemaphoreSubmitInfo(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore)
 {
-	return {
+	return
+	{
 		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
 		.pNext = nullptr,
 		.semaphore = semaphore,
@@ -719,7 +717,8 @@ VkSemaphoreSubmitInfo VkEngine::SemaphoreSubmitInfo(VkPipelineStageFlags2 stageM
 
 VkCommandBufferSubmitInfo VkEngine::CommandBufferSubmitInfo(VkCommandBuffer cmd)
 {
-	return {
+	return
+	{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
 		.pNext = nullptr,
 		.commandBuffer = cmd,
@@ -785,7 +784,7 @@ void VkEngine::InitSyncStructures()
 	}
 
 	VK_CHECK(vkCreateFence(vd.device_, &fenceCreateInfo, nullptr, &immFence_));
-	mainDeletionQueue_.push_function([=]()
+	mainDeletionQueue_.pushFunction([=]()
 	{
 		vkDestroyFence(vd.device_, immFence_, nullptr);
 	});
@@ -1158,52 +1157,66 @@ void VkEngine::InitPipelines()
 
 VkPipelineShaderStageCreateInfo VkEngine::PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage, VkShaderModule shaderModule)
 {
-	VkPipelineShaderStageCreateInfo stageInfo{};
-	stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	stageInfo.pNext = nullptr;
-	stageInfo.stage = stage;
-	stageInfo.module = shaderModule;
-	stageInfo.pName = "main";
-
-	return stageInfo;
+	return
+	{
+		.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+		.pNext  = nullptr,
+		.stage  = stage,
+		.module = shaderModule,
+		.pName  = "main"
+	};
 }
 
-VkComputePipelineCreateInfo VkEngine::ComputePipelineCreateInfo(VkPipelineShaderStageCreateInfo shaderStage, VkPipelineLayout layout) {
-	VkComputePipelineCreateInfo computePipelineInfo = {};
-	computePipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	computePipelineInfo.pNext = nullptr;
-	computePipelineInfo.layout = layout;
-	computePipelineInfo.stage = shaderStage;
-
-	return computePipelineInfo;
+VkComputePipelineCreateInfo VkEngine::ComputePipelineCreateInfo(VkPipelineShaderStageCreateInfo shaderStage, VkPipelineLayout layout) // NOLINT(*-convert-member-functions-to-static)
+{
+	return
+	{
+		.sType              = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+		.pNext              = nullptr,
+		.flags              = 0, // default value
+		.stage              = shaderStage,
+		.layout             = layout,
+		.basePipelineHandle = VK_NULL_HANDLE, // default value
+		.basePipelineIndex  = -1 // default value
+	};
 }
 
 VkPipelineLayoutCreateInfo VkEngine::CreatePipelineLayoutInfo()
 {
-	VkPipelineLayoutCreateInfo layout{};
-	layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	layout.pNext = nullptr;
-	layout.pSetLayouts = &drawImageDescriptorLayout_;
-	layout.setLayoutCount = 1;
-
-	return layout;
+	return
+	{
+		.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.pNext                  = nullptr,
+		.flags                  = 0, // default value
+		.setLayoutCount         = 1,
+		.pSetLayouts            = &drawImageDescriptorLayout_,
+		.pushConstantRangeCount = 0, // default value, adjust if needed
+		.pPushConstantRanges    = nullptr // default value, adjust if needed
+	};
 }
 void VkEngine::InitBackgroundPipelines()
 {
-	CreatePipelineLayoutInfo();
+	// CreatePipelineLayoutInfo();
 
-	VkPipelineLayoutCreateInfo computeLayout{};
-	computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	computeLayout.pNext = nullptr;
-	computeLayout.pSetLayouts = &drawImageDescriptorLayout_;
-	computeLayout.setLayoutCount = 1;
+	VkPipelineLayoutCreateInfo computeLayout
+	{
+		.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.pNext                  = nullptr,
+		.flags                  = 0, // default value
+		.setLayoutCount         = 1,
+		.pSetLayouts            = &drawImageDescriptorLayout_,
+		.pushConstantRangeCount = 0, // default value, adjust if needed
+		.pPushConstantRanges    = nullptr // default value, adjust if needed
+	};
 
-	VkPushConstantRange pushConstant{};
-	pushConstant.offset = 0;
-	pushConstant.size = sizeof(ComputePushConstants);
-	pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	VkPushConstantRange pushConstant
+	{
+		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+		.offset     = 0,
+		.size       = sizeof(ComputePushConstants)
+	};
 
-	computeLayout.pPushConstantRanges = &pushConstant;
+	computeLayout.pPushConstantRanges    = &pushConstant;
 	computeLayout.pushConstantRangeCount = 1;
 
 	VK_CHECK(vkCreatePipelineLayout(vd.device_, &computeLayout, nullptr, &gradientPipelineLayout_));
@@ -1219,25 +1232,33 @@ void VkEngine::InitBackgroundPipelines()
 	}
 
 	VkPipelineShaderStageCreateInfo gradientStageInfo = PipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, gradientShader);
-	VkPipelineShaderStageCreateInfo skyStageInfo = PipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, skyShader);
+	VkPipelineShaderStageCreateInfo skyStageInfo      = PipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, skyShader);
 
 	VkComputePipelineCreateInfo gradientPipelineCreateInfo = ComputePipelineCreateInfo(gradientStageInfo, gradientPipelineLayout_);
-	VkComputePipelineCreateInfo skyPipelineCreateInfo = ComputePipelineCreateInfo(skyStageInfo, gradientPipelineLayout_);
+	VkComputePipelineCreateInfo skyPipelineCreateInfo      = ComputePipelineCreateInfo(skyStageInfo, gradientPipelineLayout_);
 
-	ComputeEffect gradient{};
-	gradient.layout = gradientPipelineLayout_;
-	gradient.name = "gradient";
-	gradient.data = {};
-	gradient.data.data1 = glm::vec4(1, 0, 0, 1);
-	gradient.data.data2 = glm::vec4(0, 0, 1, 1);
+	ComputeEffect gradient
+	{
+		.name   = "gradient",
+		.layout = gradientPipelineLayout_,
+		.data   =
+		{
+			.data1 = glm::vec4(1, 0, 0, 1),
+			.data2 = glm::vec4(0, 0, 1, 1)
+		}
+	};
 
 	VK_CHECK(vkCreateComputePipelines(vd.device_, VK_NULL_HANDLE, 1, &gradientPipelineCreateInfo, nullptr, &gradient.pipeline));
 
-	ComputeEffect sky{};
-	sky.layout = gradientPipelineLayout_;
-	sky.name = "sky";
-	sky.data = {};
-	sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
+	ComputeEffect sky
+	{
+		.name   = "sky",
+		.layout = gradientPipelineLayout_,
+		.data   =
+		{
+			.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97)
+		}
+	};
 
 	VK_CHECK(vkCreateComputePipelines(vd.device_, VK_NULL_HANDLE, 1, &skyPipelineCreateInfo, nullptr, &sky.pipeline));
 
@@ -1249,65 +1270,68 @@ void VkEngine::InitBackgroundPipelines()
 	vkDestroyShaderModule(vd.device_, gradientShader, nullptr);
 	vkDestroyShaderModule(vd.device_, skyShader, nullptr);
 
-	mainDeletionQueue_.push_function([&]()
+	mainDeletionQueue_.pushFunction([&]()
 	{
 		vkDestroyPipelineLayout(vd.device_, gradientPipelineLayout_, nullptr);
 		vkDestroyPipeline(vd.device_, sky.pipeline, nullptr);
 		vkDestroyPipeline(vd.device_, gradient.pipeline, nullptr);
-
 	});
 }
 
 void VkEngine::InitMeshPipeline()
 {
-	VkShaderModule triangleFragShader;
-	if (!load->LoadShader("shaders/texImg.frag.spv", vd.device_, &triangleFragShader)) {
-		LOG(ERR, "Error when building the triangle fragment shader module");
-	}
+    VkShaderModule triangleFragShader;
+    if (!load->LoadShader("shaders/texImg.frag.spv", vd.device_, &triangleFragShader))
+    {
+        LOG(ERR, "Error when building the triangle fragment shader module");
+    }
 
-	VkShaderModule triangleVertexShader;
-	if (!load->LoadShader("shaders/coloredTriangleMesh.vert.spv", vd.device_, &triangleVertexShader)) {
-		LOG(ERR, "Error when building the triangle vertex shader module");
-	}
+    VkShaderModule triangleVertexShader;
+    if (!load->LoadShader("shaders/coloredTriangleMesh.vert.spv", vd.device_, &triangleVertexShader))
+    {
+        LOG(ERR, "Error when building the triangle vertex shader module");
+    }
 
-	VkPushConstantRange bufferRange{};
-	bufferRange.offset = 0;
-	bufferRange.size = sizeof(GPUDrawPushConstants);
-	bufferRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    VkPushConstantRange bufferRange
+    {
+    	.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .offset     = 0,
+        .size       = sizeof(GPUDrawPushConstants)
+    };
 
-	VkPipelineLayoutCreateInfo pipelineLayoutInfo = CreatePipelineLayoutInfo();
-	pipelineLayoutInfo.pPushConstantRanges = &bufferRange;
-	pipelineLayoutInfo.pushConstantRangeCount = 1;
-	pipelineLayoutInfo.pSetLayouts = &singleImageDescriptorLayout_;
-	pipelineLayoutInfo.setLayoutCount = 1;
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo = CreatePipelineLayoutInfo();
+    pipelineLayoutInfo.pPushConstantRanges    = &bufferRange;
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pSetLayouts            = &singleImageDescriptorLayout_;
+    pipelineLayoutInfo.setLayoutCount         = 1;
 
+    VK_CHECK(vkCreatePipelineLayout(vd.device_, &pipelineLayoutInfo, nullptr, &meshPipelineLayout_));
 
-	VK_CHECK(vkCreatePipelineLayout(vd.device_, &pipelineLayoutInfo, nullptr, &meshPipelineLayout_));
+    PipelineBuilder pipelineBuilder;
+    pipelineBuilder.data.config.layout = meshPipelineLayout_;
+    pipelineBuilder
+        .SetShaders(triangleVertexShader, triangleFragShader)
+        .SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+        .SetPolygonMode(VK_POLYGON_MODE_FILL)
+        .SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
+        .SetMultisamplingNone()
+        .DisableBlending()
+        .EnableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+        .SetColorAttachmentFormat(drawImage_.imageFormat)
+        .SetDepthFormat(depthImage_.imageFormat);
+		// .EnableBlendingAdditive();
 
-	PipelineBuilder pipelineBuilder;
-	pipelineBuilder.data.config.layout = meshPipelineLayout_;
-	pipelineBuilder
-			.SetShaders(triangleVertexShader, triangleFragShader)
-			.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-			.SetPolygonMode(VK_POLYGON_MODE_FILL)
-			.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
-			.SetMultisamplingNone()
-			.DisableBlending()
-			.EnableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
-			.SetColorAttachmentFormat(drawImage_.imageFormat)
-			.SetDepthFormat(depthImage_.imageFormat);
-			// .EnableBlendingAdditive();
-
-	meshPipeline_ = pipelineBuilder.BuildPipeline(vd.device_, pipelineBuilder.data);
+    meshPipeline_ = pipelineBuilder.BuildPipeline(vd.device_, pipelineBuilder.data);
 
 	// Destroy shader modules immediately
 	vkDestroyShaderModule(vd.device_, triangleFragShader, nullptr);
 	vkDestroyShaderModule(vd.device_, triangleVertexShader, nullptr);
 
-	mainDeletionQueue_.push_function([&]() {
-		vkDestroyPipelineLayout(vd.device_, meshPipelineLayout_, nullptr);
-		vkDestroyPipeline(vd.device_, meshPipeline_, nullptr);
-	});
+    mainDeletionQueue_.pushFunction([&]()
+    {
+        vkDestroyPipelineLayout(vd.device_, meshPipelineLayout_, nullptr);
+        vkDestroyPipeline(vd.device_, meshPipeline_, nullptr);
+    });
 }
 
 #pragma endregion Pipelines
@@ -1355,7 +1379,7 @@ void VkEngine::InitDescriptors()
 
 	for (int i = 0; i < FRAME_OVERLAP; i++) {
 		// create a descriptor pool
-		std::vector<VkDescriptor::PoolSizeRatio> frame_sizes = {
+		std::vector<VkDescriptor::PoolSizeRatio> frameSizes = {
 			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
@@ -1363,9 +1387,9 @@ void VkEngine::InitDescriptors()
 		};
 
 		frames_[i].frameDescriptors_ = VkDescriptor{};
-		frames_[i].frameDescriptors_.Init(vd.device_, 1000, frame_sizes);
+		frames_[i].frameDescriptors_.Init(vd.device_, 1000, frameSizes);
 
-		mainDeletionQueue_.push_function([&, i]() {
+		mainDeletionQueue_.pushFunction([&, i]() {
 			frames_[i].frameDescriptors_.DestroyPools(vd.device_);
 		});
 	}
@@ -1415,24 +1439,27 @@ VkDescriptorSetLayout DescriptorLayoutBuilder::Build(VkDevice device, VkShaderSt
 void DescriptorAllocator::InitPool(VkDevice device, u32 maxSets, std::span<PoolSizeRatio> poolRatios)
 {
 	std::vector<VkDescriptorPoolSize> poolSizes;
-	for (PoolSizeRatio ratio : poolRatios)
+	for (const auto& ratio : poolRatios)
 	{
 		poolSizes.push_back(VkDescriptorPoolSize{
-			.type = ratio.type,
-			.descriptorCount = u32(ratio.ratio * maxSets)
+			.type            = ratio.type,
+			.descriptorCount = static_cast<u32>(ratio.ratio * maxSets)
 		});
 	}
 
-	VkDescriptorPoolCreateInfo pool_info = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-	pool_info.flags = 0;
-	pool_info.maxSets = maxSets;
-	pool_info.poolSizeCount = (u32)poolSizes.size();
-	pool_info.pPoolSizes = poolSizes.data();
 
-	vkCreateDescriptorPool(device, &pool_info, nullptr, &pool);
+	VkDescriptorPoolCreateInfo poolInfo
+	{
+		.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.maxSets       = maxSets,
+		.poolSizeCount = static_cast<u32>(poolSizes.size()),
+		.pPoolSizes    = poolSizes.data()
+	};
+
+	vkCreateDescriptorPool(device, &poolInfo, nullptr, &pool);
 }
 
-void DescriptorAllocator::ClearDescriptors(VkDevice device)
+void DescriptorAllocator::ClearDescriptors(VkDevice device) const
 {
 	vkResetDescriptorPool(device, pool, 0);
 }
@@ -1444,17 +1471,18 @@ void DescriptorAllocator::DestroyPool(VkDevice device)
 
 VkDescriptorSet DescriptorAllocator::Allocate(VkDevice device, VkDescriptorSetLayout layout)
 {
-	VkDescriptorSetAllocateInfo allocInfo = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-		.descriptorPool = pool,
+	VkDescriptorSetAllocateInfo allocInfo
+	{
+		.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.descriptorPool     = pool,
 		.descriptorSetCount = 1,
-		.pSetLayouts = &layout,
+		.pSetLayouts        = &layout
 	};
 
-	VkDescriptorSet ds;
-	VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &ds));
+	VkDescriptorSet descriptorSet;
+	VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet));
 
-	return ds;
+	return descriptorSet;
 }
 
 #pragma endregion Descriptor
@@ -1479,35 +1507,36 @@ VkRenderingInfo VkEngine::RenderInfo(VkExtent2D extent, VkRenderingAttachmentInf
 VkRenderingAttachmentInfo VkEngine::AttachmentInfo(VkImageView view, VkClearValue* clear,
                                                    VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/)
 {
-	VkRenderingAttachmentInfo colorAttachment
-	{
-		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-		.pNext = nullptr,
-		.imageView = view,
-		.imageLayout = layout,
-		.loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE
-	};
+    VkRenderingAttachmentInfo colorAttachment =
+    {
+        .sType        = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext        = nullptr,
+        .imageView    = view,
+        .imageLayout  = layout,
+        .loadOp       = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp      = VK_ATTACHMENT_STORE_OP_STORE
+    };
 
-	if (clear)
-		colorAttachment.clearValue = *clear;
+    if (clear)
+    {
+        colorAttachment.clearValue = *clear;
+    }
 
-	return colorAttachment;
+    return colorAttachment;
 }
 
 VkRenderingAttachmentInfo VkEngine::DepthAttachmentInfo(VkImageView view, VkImageLayout layout /*= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL*/)
 {
-	VkRenderingAttachmentInfo depthAttachment {};
-	depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-	depthAttachment.pNext = nullptr;
-
-	depthAttachment.imageView = view;
-	depthAttachment.imageLayout = layout;
-	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	depthAttachment.clearValue.depthStencil.depth = 0.f;
-
-	return depthAttachment;
+    return
+    {
+        .sType                             = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext                             = nullptr,
+        .imageView                         = view,
+        .imageLayout                       = layout,
+        .loadOp                            = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp                           = VK_ATTACHMENT_STORE_OP_STORE,
+    	.clearValue						   = { .depthStencil = { .depth = 0.f, .stencil = 0 } } // Nested initializer list
+    };
 }
 
 #pragma endregion Render
@@ -1549,7 +1578,7 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
     AllocatedBuffer gpuSceneDataBuffer = CreateBuffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
     // Add it to the deletion queue of this frame so it gets deleted once it's been used
-    GetCurrentFrame().deletionQueue_.push_function([=, this]() {
+    GetCurrentFrame().deletionQueue_.pushFunction([=, this]() {
         DestroyBuffer(gpuSceneDataBuffer);
     });
 
@@ -1690,7 +1719,7 @@ void VkEngine::InitDefaultData()
     }
 
     // Add destruction callbacks to the deletion queue
-    mainDeletionQueue_.push_function([&]() {
+    mainDeletionQueue_.pushFunction([&]() {
         vkDestroySampler(vd.device_, defaultSamplerNearest_, nullptr);
         vkDestroySampler(vd.device_, defaultSamplerLinear_, nullptr);
 
@@ -1706,7 +1735,7 @@ void VkEngine::Draw()
 {
     // Wait until the GPU has finished rendering the last frame. Timeout of 1 second
     VK_CHECK(vkWaitForFences(vd.device_, 1, &GetCurrentFrame().renderFence_, true, 1000000000));
-    GetCurrentFrame().deletionQueue_.flush();
+    GetCurrentFrame().deletionQueue_.Flush();
 	GetCurrentFrame().frameDescriptors_.ClearPools(vd.device_);
 
     VK_CHECK(vkResetFences(vd.device_, 1, &GetCurrentFrame().renderFence_));
@@ -1723,8 +1752,8 @@ void VkEngine::Draw()
 
     VkCommandBufferBeginInfo cmdBeginInfo = CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-	windowExtent_.height = static_cast<u32>(std::min(swapchainExtent_.height, drawImage_.imageExtent.height) * renderScale);
-	windowExtent_.width = static_cast<u32>(std::min(swapchainExtent_.width, drawImage_.imageExtent.width) * renderScale);
+	windowExtent_.height = static_cast<u32>(std::min(static_cast<float>(swapchainExtent_.height), static_cast<float>(drawImage_.imageExtent.height)) * renderScale);
+	windowExtent_.width = static_cast<u32>(std::min(static_cast<float>(swapchainExtent_.width), static_cast<float>(drawImage_.imageExtent.width)) * renderScale);
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 

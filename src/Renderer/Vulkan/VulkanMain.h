@@ -19,9 +19,9 @@ namespace GraphicsAPI::Vulkan
 	{
 		std::deque<std::function<void()>> deletors;
 
-		void push_function(std::function<void()> &&function) { deletors.emplace_back(std::move(function)); }
+		void pushFunction(std::function<void()> &&function) { deletors.emplace_back(std::move(function)); }
 
-		void flush()
+		void Flush()
 		{
 			// Reverse iterate the deletion queue to execute all the functions
 			for (auto it = deletors.rbegin(); it != deletors.rend(); ++it)
@@ -66,8 +66,10 @@ namespace GraphicsAPI::Vulkan
 	{
 		VkSemaphore swapChainSemaphore_, renderSemaphore_;
 		VkFence renderFence_;
+
 		VkCommandPool commandPool_;
 		VkCommandBuffer mainCommandBuffer_;
+
 		DeletionQueue deletionQueue_;
 		VkDescriptor frameDescriptors_;
 	};
@@ -76,7 +78,7 @@ namespace GraphicsAPI::Vulkan
 	{
 	public:
 		explicit VkEngine(Platform::WindowContext *winManager);
-		~VkEngine();
+		~VkEngine() override;
 
 		void Run();
 		void Cleanup();
@@ -113,11 +115,11 @@ namespace GraphicsAPI::Vulkan
 
 		// Utility Functions
 		static VkPipelineShaderStageCreateInfo PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage,
-																			 VkShaderModule shaderModule);
-		VkComputePipelineCreateInfo ComputePipelineCreateInfo(VkPipelineShaderStageCreateInfo shaderStage,
-															  VkPipelineLayout layout);
+																			 VkShaderModule		   shaderModule);
+		VkComputePipelineCreateInfo			   ComputePipelineCreateInfo(VkPipelineShaderStageCreateInfo shaderStage,
+																		 VkPipelineLayout				 layout);
 		VkPipelineLayoutCreateInfo CreatePipelineLayoutInfo();
-		VkCommandPoolCreateInfo CommandPoolCreateInfo(u32 queueFamilyIndex, VkCommandPoolCreateFlags flags);
+		static VkCommandPoolCreateInfo CommandPoolCreateInfo(u32 queueFamilyIndex, VkCommandPoolCreateFlags flags);
 		VkCommandBufferAllocateInfo CommandBufferAllocateInfo(VkCommandPool pool, u32 count);
 		VkCommandBufferBeginInfo CommandBufferBeginInfo(VkCommandBufferUsageFlags flags);
 		VkSemaphoreSubmitInfo SemaphoreSubmitInfo(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore);
@@ -130,7 +132,7 @@ namespace GraphicsAPI::Vulkan
 		VkImageViewCreateInfo ImageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
 		void CreateImageWithVMA(const VkImageCreateInfo &imageInfo, VkMemoryPropertyFlags memoryPropertyFlags,
 								VkImage &image, VmaAllocation &allocation);
-		void CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize,
+		static void CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize,
 							  VkExtent2D dstSize);
 		AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 		void DestroyBuffer(const AllocatedBuffer &buffer);
@@ -143,7 +145,7 @@ namespace GraphicsAPI::Vulkan
 		void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout,
 							 VkImageLayout newLayout) const;
 		VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask) const;
-		VkRenderingInfo RenderInfo(VkExtent2D extent, VkRenderingAttachmentInfo *colorAttachment,
+		static VkRenderingInfo RenderInfo(VkExtent2D extent, VkRenderingAttachmentInfo *colorAttachment,
 								   VkRenderingAttachmentInfo *depthAttachment);
 		VkRenderingAttachmentInfo AttachmentInfo(VkImageView view, VkClearValue *clear, VkImageLayout layout);
 		VkRenderingAttachmentInfo DepthAttachmentInfo(VkImageView view, VkImageLayout layout);
@@ -179,8 +181,7 @@ namespace GraphicsAPI::Vulkan
 		bool meshLoaded_ = false;
 
 		Platform::WindowContext* winManager_;
-		Platform::Win32* win32_;
-		VkLoader* load;
+		VkLoader* load{};
 		VulkanData vd;
 		VmaAllocator allocator_;
 		VkQueue graphicsQueue_{};

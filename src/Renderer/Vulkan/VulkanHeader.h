@@ -12,10 +12,8 @@
 #include <string>
 #include <vector>
 #include "../../Core/Array.h"
+#include "../../Platform/WindowContext.h"
 
-#ifdef _WIN32
-#include "../../Platform/PlatformWindows.h"
-#endif
 #include <backends/imgui_impl_vulkan.h>
 #include <vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>

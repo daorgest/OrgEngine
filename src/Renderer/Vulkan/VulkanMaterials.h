@@ -52,7 +52,7 @@ namespace GraphicsAPI::Vulkan
 			AllocatedImage metalRoughImage;
 			VkSampler metalRoughSampler;
 			VkBuffer dataBuffer;
-			uint32_t dataBufferOffset;
+			u32 dataBufferOffset;
 		};
 
 		VkDescriptorWriter writer;
