@@ -20,7 +20,6 @@ void InitConsole()
     SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 }
 
-
 int main(int argc, char** argv)
 {
 #ifdef DEBUG
@@ -32,18 +31,12 @@ int main(int argc, char** argv)
     Platform::Win32 platform(&windowContext);
     GraphicsAPI::Vulkan::VkEngine engine(&windowContext);
 
-    if (!platform.Init())
-    {
-        std::cerr << "Failed to initialize the platform.\n";
-        return EXIT_FAILURE;
-    }
-
+    platform.Init();
     engine.Init();
     engine.Run();
 
-    // Cleanup
-    engine.Cleanup();
-    platform.DestroyAppWindow();
     return 0;
 }
 #endif
+
+

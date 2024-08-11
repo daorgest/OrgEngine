@@ -1,8 +1,5 @@
 #pragma once
-#include <chrono>
 #include <iostream>
-#include <sstream>
-#include <thread>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 
@@ -25,7 +22,8 @@ namespace Logger
     inline DateFormat currentDateFormat = DATE_FORMAT_24H;
     inline bool includeTimestamp = true;
 
-    inline void Init() {
+    inline void Init()
+    {
         std::cout << "Logger initialized\n";
     }
 
@@ -48,15 +46,15 @@ namespace Logger
 
 		const auto now = std::chrono::system_clock::now();
 		const auto now_c = std::chrono::system_clock::to_time_t(now);
-        std::tm local_tm{};
-        localtime_s(&local_tm, &now_c);
+        std::tm localTime{};
+        localtime_s(&localTime, &now_c);
 
         switch (currentDateFormat)
         {
             case DATE_FORMAT_12H:
-                return fmt::format("{:%m-%d-%Y %I:%M %p}", local_tm);
+                return fmt::format("{:%m-%d-%Y %I:%M %p}", localTime);
             case DATE_FORMAT_24H:
-                return fmt::format("{:%m-%d-%Y %H:%M}", local_tm);
+                return fmt::format("{:%m-%d-%Y %H:%M}", localTime);
             default:
                 return "";
         }
@@ -71,10 +69,27 @@ namespace Logger
         std::string timestamp = GetTimestamp();
         const char* levelString = LogLevelToString(level);
 
-        if (level == ERR) {
-            std::cout << fmt::format("[{}] [{}{}] {}:{} - {}\n", timestamp, levelString, "\033[0m", file, line, combinedStream.str());
-        } else {
-            std::cout << fmt::format("[{}] [{}{}] {}\n", timestamp, levelString, "\033[0m", combinedStream.str());
+        if (timestamp.empty())
+        {
+            if (level == ERR)
+            {
+                std::cout << fmt::format("[{}{}] {}:{} - {}\n", levelString, "\033[0m", file, line, combinedStream.str());
+            }
+            else
+            {
+                std::cout << fmt::format("[{}{}] {}\n", levelString, "\033[0m", combinedStream.str());
+            }
+        }
+        else
+        {
+            if (level == ERR)
+            {
+                std::cout << fmt::format("[{}] [{}{}] {}:{} - {}\n", timestamp, levelString, "\033[0m", file, line, combinedStream.str());
+            }
+            else
+            {
+                std::cout << fmt::format("[{}] [{}{}] {}\n", timestamp, levelString, "\033[0m", combinedStream.str());
+            }
         }
     }
 
