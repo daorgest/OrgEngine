@@ -1,7 +1,7 @@
 # Generated from CLion C/C++ Code Style settings
 ---
 Language: Cpp
-BasedOnStyle: LLVM
+BasedOnStyle: Google
 AccessModifierOffset: -4
 AlignConsecutiveAssignments: true
 AlignConsecutiveDeclarations: true
@@ -11,7 +11,7 @@ AlwaysBreakTemplateDeclarations: Yes
 BraceWrapping: 
   AfterCaseLabel: true
   AfterClass: true
-  AfterControlStatement: false
+  AfterControlStatement: true
   AfterEnum: true
   AfterFunction: true
   AfterNamespace: true
