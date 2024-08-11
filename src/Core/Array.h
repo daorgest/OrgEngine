@@ -15,7 +15,7 @@ class SafeArray
 protected:
 	T a[N];
 public:
-	SafeArray()
+	constexpr SafeArray()
 	{
 		memset(a, 0, sizeof(a));
 	}
@@ -26,27 +26,27 @@ public:
 	}
 
 
-	T* begin()
+	constexpr T* begin()
 	{
 		return a + size();
 	}
 
-	T* data()
+	constexpr T* data()
 	{
 		return a;
 	}
 
-	const T* data() const
+	constexpr T* data() const
 	{
 		return a;
 	}
 
-	T* end()
+	constexpr T* end()
 	{
 		return a + N;
 	}
 
-	void fill(const T& val) noexcept
+	constexpr void fill(const T& val) noexcept
 	{
 		for (u32 i = 0; i < N; i++)
 		{
@@ -54,7 +54,7 @@ public:
 		}
 	}
 
-	T& operator[] (u32 i)
+	constexpr T& operator[] (u32 i)
 	{
 		assert(i < N && "Index out of bounds");
 		return a[i];
