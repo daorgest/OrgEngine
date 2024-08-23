@@ -8,6 +8,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Options for different renderers
 option(USE_DIRECTX11 "Use DirectX 11 Renderer" FALSE)
 option(USE_VULKAN "Use Vulkan Renderer" TRUE)
+option(USE_SDL3 "Use SDL Window Manager" TRUE)
+
+message(STATUS "USE_DIRECTX11 is set to: ${USE_DIRECTX11}")
+message(STATUS "USE_VULKAN is set to: ${USE_VULKAN}")
+message(STATUS "USE_SDL is set to: ${USE_SDL3}")
 
 # Definitions for Vulkan build and Windows platform
 add_definitions(-DVULKAN_BUILD -DUNICODE -D_UNICODE -DNOMINMAX)
@@ -29,6 +34,28 @@ endif()
 # Source files globbing
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
 
+# Conditional SDL integration
+if(USE_SDL3)
+  add_compile_definitions(USE_SDL3)
+  add_subdirectory(libs/3rdParty/sdl3)
+  target_link_libraries(OrgEngine PRIVATE SDL3::SDL3-static)
+
+  # Remove PlatformWindows.cpp from SOURCE_FILES if SDL is enabled
+  list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/PlatformWindows.cpp")
+
+  # Add SDL-specific sources
+  list(APPEND SOURCE_FILES
+          "${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/PlatformSDL.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/PlatformSDL.cpp"
+  )
+else()
+  # Add Win32-specific sources if SDL is not used
+  list(APPEND SOURCE_FILES
+          "${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/PlatformWindows.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/PlatformWindows.cpp"
+  )
+endif()
+
 # Add executable
 add_executable(OrgEngine ${SOURCE_FILES})
 
@@ -42,7 +69,6 @@ add_subdirectory(libs/3rdParty/vk-bootstrap)
 add_subdirectory(libs/3rdParty/vma)
 add_subdirectory(libs/3rdParty/fastgltf)
 
-# ImGui integration
 set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/3rdParty/imgui")
 file(GLOB IMGUI_SOURCES
         "${IMGUI_DIR}/imgui.cpp"
@@ -50,9 +76,15 @@ file(GLOB IMGUI_SOURCES
         "${IMGUI_DIR}/imgui_demo.cpp"
         "${IMGUI_DIR}/imgui_tables.cpp"
         "${IMGUI_DIR}/imgui_widgets.cpp"
-        "${IMGUI_DIR}/backends/imgui_impl_win32.cpp"
         "${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp"
 )
+
+# Choose the appropriate backend based on the window manager
+if(USE_SDL3)
+  list(APPEND IMGUI_SOURCES "${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp")
+else()
+  list(APPEND IMGUI_SOURCES "${IMGUI_DIR}/backends/imgui_impl_win32.cpp")
+endif()
 
 # Include directories
 target_include_directories(OrgEngine PRIVATE

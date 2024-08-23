@@ -2,6 +2,9 @@
 // Created by Orgest on 4/12/2024.
 //
 
+#include <SDL3/SDL_vulkan.h>
+#include <backends/imgui_impl_sdl3.h>
+
 #include "backends/imgui_impl_win32.h"
 #ifdef VULKAN_BUILD
 #include "VulkanMain.h"
@@ -121,20 +124,31 @@ void VkEngine::Run()
 
 void VkEngine::ResizeSwapchain()
 {
+	vkDeviceWaitIdle(vd.device_);
+	DestroySwapchain();
 
+	int width, height;
+#ifdef USE_SDL3
+	SDL_GetWindowSize(winManager_->window, &width, &height);
+#else // Win32
 	if (winManager_->screenWidth == 0 || winManager_->screenHeight == 0)
 	{
 		// Skip resizing if dimensions are invalid (minimized window)
 		return;
 	}
-	vkDeviceWaitIdle(vd.device_);
-
-	DestroySwapchain();
 
 	RECT rect;
 	GetClientRect(winManager_->hwnd, &rect);
-	int width = rect.right - rect.left;
-	int height = rect.bottom - rect.top;
+	width = rect.right - rect.left;
+	height = rect.bottom - rect.top;
+#endif
+
+	// If width or height is zero, skip resizing to prevent issues.
+	if (width == 0 || height == 0)
+	{
+		return;
+	}
+
 	swapchainExtent_.width = width;
 	swapchainExtent_.height = height;
 
@@ -142,6 +156,8 @@ void VkEngine::ResizeSwapchain()
 
 	resizeRequested = false;
 }
+
+
 
 
 void VkEngine::RenderMemoryUsageImGui() {
@@ -278,7 +294,11 @@ void VkEngine::InitImgui()
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 	io.ConfigDebugIsDebuggerPresent = true;
 
+#ifdef USE_SDL3
+	ImGui_ImplSDL3_InitForVulkan(winManager_->window);
+#else
 	ImGui_ImplWin32_Init(winManager_->hwnd);
+#endif
 
 	ImGui_ImplVulkan_InitInfo init_info
 	{
@@ -332,7 +352,11 @@ void VkEngine::InitVulkan()
 	vd.dbgMessenger_ = instRet.value().debug_messenger;
 	LOG(INFO, "Vulkan Instance and Debug Messenger created successfully.");
 
+#ifdef USE_SDL3
+	CreateSurfaceSDL(winManager_->window, vd);
+#else
 	CreateSurfaceWin32(winManager_->hInstance, winManager_->hwnd, vd);
+#endif
 	LOG(INFO, "Win32 Surface created successfully.");
 
 	//vulkan 1.3 features
@@ -486,6 +510,16 @@ std::string VkEngine::decodeDriverVersion(u32 driverVersion, u32 vendorID)
 
 #pragma region Surface Management
 
+void VkEngine::CreateSurfaceSDL(SDL_Window* window, VulkanData& vd)
+{
+	if (!SDL_Vulkan_CreateSurface(window, vd.instance_, nullptr, &vd.surface_))
+	{
+		LOG(ERR, "Failed to create Vulkan surface using SDL: ", SDL_GetError());
+		exit(1);
+	}
+	LOG(INFO, "SDL Vulkan Surface created successfully.");
+}
+
 void VkEngine::CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData& vd)
 {
 	if (!hwnd)
@@ -542,8 +576,11 @@ void VkEngine::InitSwapChain()
     // Destroy the old swapchain before creating a new one
     DestroySwapchain();
 
-    // Recreate surface
-    CreateSurfaceWin32(winManager_->hInstance, winManager_->hwnd, vd);
+#ifdef USE_SDL3
+	CreateSurfaceSDL(winManager_->window, vd);
+#else
+	CreateSurfaceWin32(winManager_->hInstance, winManager_->hwnd, vd);
+#endif
 
     CreateSwapchain(winManager_->screenWidth, winManager_->screenHeight);
 

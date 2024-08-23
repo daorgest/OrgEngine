@@ -1,4 +1,6 @@
 #include <iostream>
+
+#include "../Platform/PlatformSDL.h"
 #include "../Platform/PlatformWindows.h"
 #include "../Renderer/Vulkan/VulkanMain.h"
 
@@ -27,8 +29,8 @@ int main(int argc, char** argv)
     InitConsole();
 #endif
 
-    Platform::WindowContext windowContext;
-    Platform::Win32 platform(&windowContext);
+    Platform::WindowContext windowContext(1280, 720);
+    Platform::SDL platform(&windowContext);
     GraphicsAPI::Vulkan::VkEngine engine(&windowContext);
 
     platform.Init();

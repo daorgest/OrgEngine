@@ -166,6 +166,7 @@ namespace GraphicsAPI::Vulkan
 		static void CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData &vd);
 		static void PrintAvailableExtensions();
 		static std::string decodeDriverVersion(u32 driverVersion, u32 vendorID);
+		static void			   CreateSurfaceSDL(SDL_Window *window, VulkanData &vd);
 
 		VkDescriptorSetLayout gpuSceneDataDescriptorLayout_{};
 		VkFormat swapchainImageFormat_;
