@@ -22,7 +22,7 @@ constexpr bool bUseValidationLayers = false;
 using namespace GraphicsAPI::Vulkan;
 
 VkEngine::VkEngine(Platform::WindowContext *winManager) :
-	swapchainImageFormat_(), winManager_(winManager), allocator_(nullptr),
+	swapchainImageFormat_(), windowContext_(winManager), allocator_(nullptr),
 	frames_{}, meshPipelineLayout_(nullptr), meshPipeline_(nullptr), rectangle()
 {
 
@@ -111,28 +111,15 @@ void VkEngine::Run()
 	}
 }
 
-// void VkEngine::UpdateFPS() {
-// 	static double lastFPSTime = win32_->GetAbsoluteTime();
-// 	double currentFPSTime = win32_->GetAbsoluteTime();
-// 	double elapsed = currentFPSTime - lastFPSTime;
-// 	lastFPSTime = currentFPSTime;
-// 	fps_ = 1.0 / elapsed * 1;
-// }
-
 void VkEngine::ResizeSwapchain()
 {
 
-	if (winManager_->screenWidth == 0 || winManager_->screenHeight == 0)
-	{
-		// Skip resizing if dimensions are invalid (minimized window)
-		return;
-	}
 	vkDeviceWaitIdle(vd.device_);
 
 	DestroySwapchain();
 
 	RECT rect;
-	GetClientRect(winManager_->hwnd, &rect);
+	GetClientRect(windowContext_->hwnd, &rect);
 	int width = rect.right - rect.left;
 	int height = rect.bottom - rect.top;
 	swapchainExtent_.width = width;
@@ -143,93 +130,118 @@ void VkEngine::ResizeSwapchain()
 	resizeRequested = false;
 }
 
-
-void VkEngine::RenderMemoryUsageImGui() {
-	VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
-	vmaGetHeapBudgets(allocator_, budgets);
-
-	ImGui::Text("Memory Budget:");
-	for (u32 i = 0; i < 2; ++i) {
-		if (budgets[i].statistics.blockCount > 0) {
-			double usageMB = static_cast<double>(budgets[i].usage) / (1024.0 * 1024.0);
-			double budgetMB = static_cast<double>(budgets[i].budget) / (1024.0 * 1024.0);
-			double blockBytesMB = static_cast<double>(budgets[i].statistics.blockBytes) / (1024.0 * 1024.0);
-			double allocationBytesMB = static_cast<double>(budgets[i].statistics.allocationBytes) / (1024.0 * 1024.0);
-
-			ImGui::Text("Heap %u:", i);
-			ImGui::Text("  Usage: %.2f MB", usageMB);
-			ImGui::Text("  Budget: %.2f MB", budgetMB);
-			ImGui::Text("  Allocations: %u", budgets[i].statistics.allocationCount);
-			ImGui::Text("  Block Bytes: %.2f MB", blockBytesMB);
-			ImGui::Text("  Allocation Bytes: %.2f MB", allocationBytesMB);
-		}
-	}
-}
-
-// void VkEngine::RenderQuickStatsImGui() {
-// 	// Update FPS every 0.6 seconds
-// 	static double lastFPSTime = win32_->GetAbsoluteTime();
-// 	double currentFPSTime = win32_->GetAbsoluteTime();
-// 	if ((currentFPSTime - lastFPSTime) > 0.6) {
-// 		UpdateFPS();
-// 		lastFPSTime = currentFPSTime;
-// 	}
-//
-// 	// Query current resolution
-// 	u32 width, height;
-// 	winManager_->GetWindowSize(width, height);
-//
-// 	// Display the stats in a menu on the bottom left
-// 	ImGui::SetNextWindowPos(ImVec2(10, ImGui::GetIO().DisplaySize.y - 220), ImGuiCond_Always);
-// 	ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_Always);
-// 	if (ImGui::Begin("Quick Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
-// 		ImGui::Text("FPS: %.2f", fps_);
-// 		ImGui::Text("Window Resolution: %ux%u", width, height);
-// 		ImGui::Text("Internal Resoultion: %ux%u", windowExtent_.width, windowExtent_.height);
-// 		RenderMemoryUsageImGui();
-// 	}
-// 	ImGui::End();
-// }
-
-void VkEngine::RenderMainMenu() {
-	if (ImGui::BeginMainMenuBar()) {
-		if (ImGui::BeginMenu("Options")) {
-			ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.f);
-			if (ImGui::MenuItem("Toggle Fullscreen")) {
-				winManager_->ToggleFullscreen();
-			}
-			if (ImGui::MenuItem("Option 2")) {
-				// Option 2 action
-			}
-
-			// Background effect settings
-			ImGui::Separator();
-			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect_];
-			ImGui::Text("Selected effect: %s", selected.name);
-			ImGui::SliderInt("Effect Index", &currentBackgroundEffect_, 0, backgroundEffects.size() - 1);
-			ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
-			ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
-			ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
-			ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
-
-			ImGui::EndMenu();
-		}
-		ImGui::EndMainMenuBar();
-	}
-}
-
-void VkEngine::RenderUI() {
-	RenderMainMenu();
-	// RenderQuickStatsImGui();
-}
-
 #pragma endregion Run
+
+#pragma region UI
+
+void VkEngine::RenderMemoryUsageImGui()
+{
+    VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
+    vmaGetHeapBudgets(allocator_, budgets);
+
+    ImGui::Text("VRAM Usage:");
+    for (u32 i = 0; i < 2; ++i) {
+        if (budgets[i].statistics.blockCount > 0) {
+            double usageMB = static_cast<double>(budgets[i].usage) / (1024.0 * 1024.0);
+            double budgetMB = static_cast<double>(budgets[i].budget) / (1024.0 * 1024.0);
+            double blockBytesMB = static_cast<double>(budgets[i].statistics.blockBytes) / (1024.0 * 1024.0);
+            double allocationBytesMB = static_cast<double>(budgets[i].statistics.allocationBytes) / (1024.0 * 1024.0);
+
+            ImGui::Text("Heap %u:", i);
+            ImGui::Text("  Usage: %.2f MB", usageMB);
+            ImGui::Text("  Budget: %.2f MB", budgetMB);
+            ImGui::Text("  Allocations: %u", budgets[i].statistics.allocationCount);
+            ImGui::Text("  Block Bytes: %.2f MB", blockBytesMB);
+            ImGui::Text("  Allocation Bytes: %.2f MB", allocationBytesMB);
+        }
+    }
+}
+
+void VkEngine::RenderQuickStatsImGui()
+{
+
+    // Set up the window for resolution
+    ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove;
+    ImGui::SetNextWindowPos(ImVec2(0, 20));
+    ImGui::SetNextWindowSize(ImVec2(350, 70));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.2f, 0.2f, 0.2f, 0.95f));
+
+
+    if (ImGui::Begin("Resolution", nullptr, windowFlags))
+    {
+        u32 width, height;
+        windowContext_->GetWindowSize(width, height);
+        ImGui::Text("Window Resolution: %ux%u", width, height);
+        ImGui::Text("Internal Resolution: %ux%u", drawExtent_.width, drawExtent_.height);
+    }
+    ImGui::End();
+
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+
+    // Set up the window for memory usage (VRAM)
+    ImGui::SetNextWindowPos(ImVec2(0, 80));
+    ImGui::SetNextWindowSize(ImVec2(350, 250));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.2f, 0.2f, 0.2f, 0.95f));
+
+
+    if (ImGui::Begin("VRAM Usage", nullptr, windowFlags))
+    {
+        RenderMemoryUsageImGui();
+    }
+    ImGui::End();
+
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+}
+
+void VkEngine::RenderMainMenu()
+{
+    if (ImGui::BeginMainMenuBar())
+    {
+        if (ImGui::BeginMenu("Options"))
+        {
+            ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.f);
+            if (ImGui::MenuItem("Toggle Fullscreen"))
+            {
+                windowContext_->ToggleFullscreen();
+            }
+            if (ImGui::MenuItem("Exit Program"))
+            {
+                PostQuitMessage(0);
+            }
+
+        	// Background effect settings
+        	ImGui::Separator();
+        	ComputeEffect& selected = backgroundEffects[currentBackgroundEffect_];
+        	ImGui::Text("Selected effect: %s", selected.name);
+        	ImGui::SliderInt("Effect Index", &currentBackgroundEffect_, 0, backgroundEffects.size() - 1);
+        	ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
+        	ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
+        	ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
+        	ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
+
+            ImGui::EndMenu();
+        }
+        ImGui::EndMainMenuBar();
+    }
+}
+
+void VkEngine::RenderUI()
+{
+    RenderMainMenu();
+    RenderQuickStatsImGui();
+}
+
+#pragma endregion UI
 
 #pragma region Initialization
 
 void VkEngine::Init()
 {
-	if (winManager_)
+	if (windowContext_)
 	{
 		InitVulkan();
 		// SetupDebugMessenger();
@@ -278,7 +290,7 @@ void VkEngine::InitImgui()
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 	io.ConfigDebugIsDebuggerPresent = true;
 
-	ImGui_ImplWin32_Init(winManager_->hwnd);
+	ImGui_ImplWin32_Init(windowContext_->hwnd);
 
 	ImGui_ImplVulkan_InitInfo init_info
 	{
@@ -332,7 +344,7 @@ void VkEngine::InitVulkan()
 	vd.dbgMessenger_ = instRet.value().debug_messenger;
 	LOG(INFO, "Vulkan Instance and Debug Messenger created successfully.");
 
-	CreateSurfaceWin32(winManager_->hInstance, winManager_->hwnd, vd);
+	CreateSurfaceWin32(windowContext_->hInstance, windowContext_->hwnd, vd);
 	LOG(INFO, "Win32 Surface created successfully.");
 
 	//vulkan 1.3 features
@@ -537,26 +549,30 @@ void VkEngine::CreateSwapchain(u32 width, u32 height)
 	LOG(INFO, "Swapchain created/recreated, Resolution: ", width, "x" , height);
 }
 
+VkExtent3D VkEngine::getScreenResolution() const
+{
+	return
+	{
+		.width = windowContext_->screenWidth,
+		.height = windowContext_->screenHeight,
+		.depth = 1,
+	};
+}
+
 void VkEngine::InitSwapChain()
 {
     // Destroy the old swapchain before creating a new one
     DestroySwapchain();
 
     // Recreate surface
-    CreateSurfaceWin32(winManager_->hInstance, winManager_->hwnd, vd);
+    CreateSurfaceWin32(windowContext_->hInstance, windowContext_->hwnd, vd);
 
-    CreateSwapchain(winManager_->screenWidth, winManager_->screenHeight);
+    CreateSwapchain(windowContext_->screenWidth, windowContext_->screenHeight);
 
-    // draw image size will match the window
-    VkExtent3D drawImageExtent = {
-        winManager_->screenWidth,
-        winManager_->screenHeight,
-        1
-    };
 
     // hardcoding the draw format to 32 bit float
     drawImage_.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT; // LMFAO??????
-    drawImage_.imageExtent = drawImageExtent;
+    drawImage_.imageExtent = getScreenResolution();
 
     VkImageUsageFlags drawImageUsages{};
     drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -565,7 +581,7 @@ void VkEngine::InitSwapChain()
     drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
 
-	VkImageCreateInfo drawImageInfo = ImageCreateInfo(drawImage_.imageFormat, drawImageUsages, drawImageExtent);
+	VkImageCreateInfo drawImageInfo = ImageCreateInfo(drawImage_.imageFormat, drawImageUsages, getScreenResolution());
 	CreateImageWithVMA(drawImageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, drawImage_.image, drawImage_.allocation);
 
 	VkImageViewCreateInfo drawImageViewInfo = ImageViewCreateInfo(drawImage_.imageFormat, drawImage_.image, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -573,11 +589,11 @@ void VkEngine::InitSwapChain()
 
 	// Set up depth image
 	depthImage_.imageFormat = VK_FORMAT_D32_SFLOAT;
-	depthImage_.imageExtent = drawImageExtent;
+	depthImage_.imageExtent = getScreenResolution();
 
 	VkImageUsageFlags depthImageUsages{};
 	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-	VkImageCreateInfo depthImageInfo = ImageCreateInfo(depthImage_.imageFormat, depthImageUsages, drawImageExtent);
+	VkImageCreateInfo depthImageInfo = ImageCreateInfo(depthImage_.imageFormat, depthImageUsages, getScreenResolution());
 	CreateImageWithVMA(depthImageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage_.image, depthImage_.allocation);
 
 	VkImageViewCreateInfo depthImageViewInfo = ImageViewCreateInfo(depthImage_.imageFormat, depthImage_.image, VK_IMAGE_ASPECT_DEPTH_BIT);
@@ -1569,7 +1585,7 @@ void VkEngine::DrawBackground(VkCommandBuffer cmd)
 	vkCmdPushConstants(cmd, gradientPipelineLayout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
 
 	// Execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
-	vkCmdDispatch(cmd, static_cast<u32>(std::ceil(windowExtent_.width / 16.0)), static_cast<u32>(std::ceil(windowExtent_.height / 16.0)), 1);
+	vkCmdDispatch(cmd, static_cast<u32>(std::ceil(drawExtent_.width / 16.0)), static_cast<u32>(std::ceil(drawExtent_.height / 16.0)), 1);
 }
 
 void VkEngine::DrawGeometry(VkCommandBuffer cmd)
@@ -1602,7 +1618,7 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 
     VkRenderingAttachmentInfo colorAttachment = AttachmentInfo(drawImage_.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
 	VkRenderingAttachmentInfo depthAttachment = DepthAttachmentInfo(depthImage_.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    VkRenderingInfo renderInfo = RenderInfo(windowExtent_, &colorAttachment, &depthAttachment);
+    VkRenderingInfo renderInfo = RenderInfo(drawExtent_, &colorAttachment, &depthAttachment);
     vkCmdBeginRendering(cmd, &renderInfo);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline_);
@@ -1611,8 +1627,8 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
     VkViewport viewport = {};
     viewport.x = 0;
     viewport.y = 0;
-    viewport.width = windowExtent_.width;
-    viewport.height = windowExtent_.height;
+    viewport.width = drawExtent_.width;
+    viewport.height = drawExtent_.height;
     viewport.minDepth = 0.f;
     viewport.maxDepth = 1.f;
     vkCmdSetViewport(cmd, 0, 1, &viewport);
@@ -1620,8 +1636,8 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
     VkRect2D scissor = {};
     scissor.offset.x = 0;
     scissor.offset.y = 0;
-    scissor.extent.width = windowExtent_.width;
-    scissor.extent.height = windowExtent_.height;
+    scissor.extent.width = drawExtent_.width;
+    scissor.extent.height = drawExtent_.height;
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
 	//bind a texture
@@ -1638,7 +1654,7 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 
 	// Calculate view and projection matrices
     glm::mat4 view = glm::translate(glm::vec3{ 0, 0, -5 });
-    glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)windowExtent_.width / (float)windowExtent_.height, 0.1f, 10000.f);
+    glm::mat4 projection = glm::perspective(glm::radians(70.f), static_cast<float>(drawExtent_.width) / static_cast<float>(drawExtent_.height), 0.1f, 10000.f);
 
     // Invert the Y direction on projection matrix so that we are more similar to OpenGL and glTF axis
     projection[1][1] *= -1;
@@ -1752,8 +1768,8 @@ void VkEngine::Draw()
 
     VkCommandBufferBeginInfo cmdBeginInfo = CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-	windowExtent_.height = static_cast<u32>(std::min(static_cast<float>(swapchainExtent_.height), static_cast<float>(drawImage_.imageExtent.height)) * renderScale);
-	windowExtent_.width = static_cast<u32>(std::min(static_cast<float>(swapchainExtent_.width), static_cast<float>(drawImage_.imageExtent.width)) * renderScale);
+	drawExtent_.height = static_cast<u32>(std::min(static_cast<float>(swapchainExtent_.height), static_cast<float>(drawImage_.imageExtent.height)) * renderScale);
+	drawExtent_.width = static_cast<u32>(std::min(static_cast<float>(swapchainExtent_.width), static_cast<float>(drawImage_.imageExtent.width)) * renderScale);
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
@@ -1779,7 +1795,7 @@ void VkEngine::Draw()
 	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// Copy image from drawImage_.image to swapchainImages_[swapchainImageIndex]
-	CopyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], windowExtent_, swapchainExtent_);
+	CopyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], drawExtent_, swapchainExtent_);
 
 	// Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL layout for rendering ImGui
 	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);

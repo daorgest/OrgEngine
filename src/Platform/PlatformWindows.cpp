@@ -29,17 +29,17 @@ namespace Platform
         {
         case WM_SYSKEYDOWN:
         case WM_KEYDOWN:
-        	if (wp < static_cast<WPARAM>(Keyboard::Key::BUTTONS_COUNT))
-        	{
-        		// input.keyboard.processButtonEvent(static_cast<Keyboard::Key>(wp), true); // Key pressed
-        	}
+        	// if (wp < static_cast<WPARAM>(Keyboard::Key::BUTTONS_COUNT))
+        	// {
+        	// 	// input.keyboard.processButtonEvent(static_cast<Keyboard::Key>(wp), true); // Key pressed
+        	// }
             break;
         case WM_SYSKEYUP:
         case WM_KEYUP:
-        	if (wp < static_cast<WPARAM>(Keyboard::Key::BUTTONS_COUNT))
-        	{
-        		// input.keyboard.processButtonEvent(static_cast<Keyboard::Key>(wp), false); // Key pressed
-        	}
+        	// if (wp < static_cast<WPARAM>(Keyboard::Key::BUTTONS_COUNT))
+        	// {
+        	// 	// input.keyboard.processButtonEvent(static_cast<Keyboard::Key>(wp), false); // Key pressed
+        	// }
             break;
         case WM_MOUSEMOVE:
             // input.cursorX = GET_X_LPARAM(lp);

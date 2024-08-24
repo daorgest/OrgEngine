@@ -16,8 +16,8 @@ namespace Platform
 	{
 		HWND							hwnd{};
 		HINSTANCE						hInstance{};
-		u32	screenWidth =				GetSystemMetrics(SM_CXSCREEN);
-		u32	screenHeight =				GetSystemMetrics(SM_CYSCREEN);
+		u32	screenWidth =				GetSystemMetrics(SM_CXSCREEN) / 2;
+		u32	screenHeight =				GetSystemMetrics(SM_CYSCREEN) / 2;
 		u32	windowPosX =				(GetSystemMetrics(SM_CXSCREEN) - screenWidth) / 2;
 		u32	windowPosY =				(GetSystemMetrics(SM_CYSCREEN) - screenHeight) / 2;
 		bool isFocused =				false;
@@ -60,4 +60,4 @@ namespace Platform
 			LOG(INFO, "Toggled fullscreen mode. New dimensions: ", screenWidth, "x", screenHeight);
 		}
 	};
-}
+}  // namespace Platform

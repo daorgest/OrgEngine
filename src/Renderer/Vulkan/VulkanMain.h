@@ -144,7 +144,7 @@ namespace GraphicsAPI::Vulkan
 		void UnmapBuffer(const AllocatedBuffer &buffer);
 		void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout,
 							 VkImageLayout newLayout) const;
-		VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask) const;
+		[[nodiscard]] VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask) const;
 		static VkRenderingInfo RenderInfo(VkExtent2D extent, VkRenderingAttachmentInfo *colorAttachment,
 								   VkRenderingAttachmentInfo *depthAttachment);
 		VkRenderingAttachmentInfo AttachmentInfo(VkImageView view, VkClearValue *clear, VkImageLayout layout);
@@ -152,7 +152,8 @@ namespace GraphicsAPI::Vulkan
 		void ImmediateSubmit(std::function<void(VkCommandBuffer cmd)> &&function);
 
 		// Swapchain Management
-		void CreateSwapchain(u32 width, u32 height);
+		void	   CreateSwapchain(u32 width, u32 height);
+		[[nodiscard]] VkExtent3D getScreenResolution() const;
 		void DestroySwapchain() const;
 
 		// Textures
@@ -180,7 +181,7 @@ namespace GraphicsAPI::Vulkan
 		float fps_ = 0.0f;
 		bool meshLoaded_ = false;
 
-		Platform::WindowContext* winManager_;
+		Platform::WindowContext* windowContext_;
 		VkLoader* load{};
 		VulkanData vd;
 		VmaAllocator allocator_;
@@ -208,7 +209,7 @@ namespace GraphicsAPI::Vulkan
 		VkSampler defaultSamplerLinear_{};
 		VkSampler defaultSamplerNearest_{};
 
-		VkExtent2D windowExtent_{};
+		VkExtent2D drawExtent_{};
 
 		DescriptorAllocator globalDescriptorAllocator{};
 
@@ -240,6 +241,7 @@ namespace GraphicsAPI::Vulkan
 		// Asset loading
 		VkLoader loader_;
 		std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+		u8 meshSelector = testMeshes.size();
 
 		// Camera and projection parameters
 		glm::vec3 cameraPosition = glm::vec3(0, 0, -5);
