@@ -17,6 +17,15 @@ enum DateFormat
     DATE_FORMAT_24H
 };
 
+inline void DebugBreak()
+{
+#ifdef _MSC_VER
+    __debugbreak();
+#else
+    __builtin_trap();
+#endif
+}
+
 namespace Logger
 {
     inline DateFormat currentDateFormat = DATE_FORMAT_24H;
@@ -74,6 +83,9 @@ namespace Logger
             if (level == ERR)
             {
                 std::cout << fmt::format("[{}{}] {}:{} - {}\n", levelString, "\033[0m", file, line, combinedStream.str());
+#ifdef _DEBUG
+                DebugBreak();
+#endif
             }
             else
             {
@@ -85,6 +97,9 @@ namespace Logger
             if (level == ERR)
             {
                 std::cout << fmt::format("[{}] [{}{}] {}:{} - {}\n", timestamp, levelString, "\033[0m", file, line, combinedStream.str());
+#ifdef _DEBUG
+                DebugBreak();
+#endif
             }
             else
             {
