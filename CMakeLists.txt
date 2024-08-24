@@ -13,17 +13,14 @@ option(USE_VULKAN "Use Vulkan Renderer" TRUE)
 add_definitions(-DVULKAN_BUILD -DUNICODE -D_UNICODE -DNOMINMAX)
 add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
 
-# MSVC-specific stuff
+# MSVC-specific configurations
 if(MSVC)
   # Release Flags
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /DNDEBUG /Ot /GT /arch:AVX2")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /DNDEBUG /Ot /GT /LTCG /arch:AVX2")
 
   # Debug flags
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Od /DEBUG")
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<CONFIG:Debug>,EditAndContinue,ProgramDatabase>")
-
-  # AddressSanitizer flags
-  set(CMAKE_CXX_FLAGS_ASAN "${CMAKE_CXX_FLAGS_DEBUG} /fsanitize=address")
 endif()
 
 # Source files globbing
@@ -90,18 +87,18 @@ function(add_shaders TARGET SHADER_DIR)
 
   set(SHADER_OUTPUTS "")
   foreach(SHADER_FILE ${SHADER_FILES})
-    get_filename_component(SHADER_NAME_WE ${SHADER_FILE} NAME_WE)
-    set(SHADER_OUTPUT "${CMAKE_BINARY_DIR}/App/shaders/${SHADER_NAME_WE}.spv")
+    get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)
+    set(SHADER_OUTPUT "${CMAKE_BINARY_DIR}/App/shaders/${SHADER_NAME}.spv")
 
-    # Avoid adding duplicate custom commands
     if(NOT SHADER_OUTPUT IN_LIST SHADER_OUTPUTS)
       add_custom_command(
               OUTPUT ${SHADER_OUTPUT}
               COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/App/shaders"
               COMMAND glslc ${SHADER_FILE} -o ${SHADER_OUTPUT}
               DEPENDS ${SHADER_FILE}
-              COMMENT "Compiling ${SHADER_NAME_WE} to ${SHADER_OUTPUT}"
+              COMMENT "Compiling ${SHADER_NAME} to ${SHADER_OUTPUT}"
       )
+      list(APPEND SHADER_OUTPUTS ${SHADER_OUTPUT})
       list(APPEND SHADER_OUTPUTS ${SHADER_OUTPUT})
     endif()
   endforeach()
@@ -109,7 +106,6 @@ function(add_shaders TARGET SHADER_DIR)
   add_custom_target(${TARGET}_Shaders ALL DEPENDS ${SHADER_OUTPUTS})
   add_dependencies(${TARGET} ${TARGET}_Shaders)
 endfunction()
-
 
 # Add shader compilation for shaders in 'src/Shaders' directory
 add_shaders(OrgEngine "${CMAKE_CURRENT_SOURCE_DIR}/src/Shaders")
@@ -138,9 +134,8 @@ set_target_properties(OrgEngine PROPERTIES
 )
 
 # Packaging for Release configuration
-if(${CMAKE_CXX_FLAGS_RELEASE})
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
   include(InstallRequiredSystemLibraries)
-  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/License.txt")
   set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
   set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
   set(CPACK_GENERATOR "TGZ")
