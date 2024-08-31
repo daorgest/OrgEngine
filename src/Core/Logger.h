@@ -2,6 +2,9 @@
 #include <iostream>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
+#if defined(_WIN32) && defined(NDEBUG)
+#include <windows.h>
+#endif
 
 enum LogLevel
 {
@@ -17,7 +20,7 @@ enum DateFormat
     DATE_FORMAT_24H
 };
 
-inline void DebugBreak()
+inline void LogDebugBreak()
 {
 #ifdef _MSC_VER
     __debugbreak();
@@ -51,10 +54,10 @@ namespace Logger
     inline std::string GetTimestamp()
     {
         if (!includeTimestamp)
-			return "";
+            return "";
 
-		const auto now = std::chrono::system_clock::now();
-		const auto now_c = std::chrono::system_clock::to_time_t(now);
+        const auto now = std::chrono::system_clock::now();
+        const auto now_c = std::chrono::system_clock::to_time_t(now);
         std::tm localTime{};
         localtime_s(&localTime, &now_c);
 
@@ -83,9 +86,6 @@ namespace Logger
             if (level == ERR)
             {
                 std::cout << fmt::format("[{}{}] {}:{} - {}\n", levelString, "\033[0m", file, line, combinedStream.str());
-#ifdef _DEBUG
-                DebugBreak();
-#endif
             }
             else
             {
@@ -97,9 +97,6 @@ namespace Logger
             if (level == ERR)
             {
                 std::cout << fmt::format("[{}] [{}{}] {}:{} - {}\n", timestamp, levelString, "\033[0m", file, line, combinedStream.str());
-#ifdef _DEBUG
-                DebugBreak();
-#endif
             }
             else
             {

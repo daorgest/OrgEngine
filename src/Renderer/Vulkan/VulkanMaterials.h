@@ -6,7 +6,12 @@
 #define VULKANMATERIALS_H
 
 #include "VulkanDescriptor.h"
-#include "VulkanMain.h"
+#include "VulkanLoader.h"
+#include "VulkanPipelines.h"
+
+namespace GraphicsAPI::Vulkan {
+	class VkEngine;
+}
 
 namespace GraphicsAPI::Vulkan
 {
@@ -30,8 +35,9 @@ namespace GraphicsAPI::Vulkan
 		MaterialPass passType;
 	};
 
-	struct GLTFMetallicRoughness
+	class GLTFMetallicRoughness : public VkLoader
 	{
+	public:
 		MaterialPipeline opaquePipeline{};
 		MaterialPipeline transparentPipeline{};
 
@@ -57,25 +63,16 @@ namespace GraphicsAPI::Vulkan
 
 		VkDescriptorWriter writer;
 
-	};
-
-	class VkMaterials
-	{
-	public:
-		void BuildPipelines(VkEngine* engine);
+		void BuildPipelines(VkEngine* engine, VkDevice device);
 		void ClearResources(VkDevice device);
 
 		MaterialInstance WriteMaterial
 		(
 			VkDevice device,
 			MaterialPass pass,
-			const GLTFMetallicRoughness::MaterialResources& resources,
-			DescriptorLayoutBuilder& descriptorAllocator
+			const MaterialResources& resources,
+			DescriptorAllocatorGrowable& descriptorAllocator
 		);
-	private:
-		VulkanData *vd = nullptr;
-		VkLoader *load = nullptr;
-		GLTFMetallicRoughness gLTFMetallicRoughness;
 	};
 }
 #endif //VULKANMATERIALS_H

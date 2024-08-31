@@ -41,26 +41,26 @@ namespace GraphicsAPI::Vulkan
 
 	struct VulkanData
 	{
-		VkInstance instance_{VK_NULL_HANDLE};
+		VkInstance				 instance_{VK_NULL_HANDLE};
 		VkDebugUtilsMessengerEXT dbgMessenger_{VK_NULL_HANDLE};
-		VkPhysicalDevice physicalDevice_{VK_NULL_HANDLE};
-		VkDevice device_{VK_NULL_HANDLE};
-		VkSurfaceKHR surface_{VK_NULL_HANDLE};
+		VkPhysicalDevice		 physicalDevice_{VK_NULL_HANDLE};
+		VkDevice				 device_{VK_NULL_HANDLE};
+		VkSurfaceKHR			 surface_{VK_NULL_HANDLE};
 	};
 
 	struct AllocatedBuffer
 	{
-		VkBuffer buffer;
-		VmaAllocation allocation;
+		VkBuffer		  buffer;
+		VmaAllocation	  allocation;
 		VmaAllocationInfo info;
 	};
 
 	struct Vertex
 	{
 		glm::vec3 position;
-		float uv_x;
+		float	  uv_x;
 		glm::vec3 normal;
-		float uv_y;
+		float	  uv_y;
 		glm::vec4 color;
 	};
 
@@ -75,16 +75,16 @@ namespace GraphicsAPI::Vulkan
 	// push constants for our mesh object draws
 	struct GPUDrawPushConstants
 	{
-		glm::mat4 worldMatrix;
+		glm::mat4		worldMatrix;
 		VkDeviceAddress vertexBuffer;
 	};
 
 	struct AllocatedImage
 	{
-		VkImage image;
-		VkImageView imageView;
+		VkImage		  image;
+		VkImageView	  imageView;
 		VmaAllocation allocation;
-		VkExtent3D imageExtent;
-		VkFormat imageFormat;
+		VkExtent3D	  imageExtent;
+		VkFormat	  imageFormat;
 	};
 }

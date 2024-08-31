@@ -2,16 +2,18 @@
 // Created by Orgest on 4/12/2024.
 //
 
-#include "backends/imgui_impl_win32.h"
+#include <backends/imgui_impl_win32.h>
 #ifdef VULKAN_BUILD
 #include "VulkanMain.h"
-#include "VkBootstrap.h"
-#include "VulkanPipelines.h"
 
+#include <VkBootstrap.h>
 #include <vk_mem_alloc.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+#include <tracy/TracyVulkan.hpp>
 
 #ifndef NDEBUG
 constexpr bool bUseValidationLayers = true;
@@ -25,7 +27,7 @@ VkEngine::VkEngine(Platform::WindowContext *winManager) :
 	swapchainImageFormat_(), windowContext_(winManager), allocator_(nullptr),
 	frames_{}, meshPipelineLayout_(nullptr), meshPipeline_(nullptr), rectangle()
 {
-
+	Init();
 }
 
 VkEngine::~VkEngine()
@@ -63,7 +65,7 @@ void VkEngine::Run()
 				else if (msg.wParam == SC_RESTORE)
 				{
 					stopRendering_ = false;
-					resizeRequested = true;
+					resizeRequested_ = true;
 				}
 			}
 
@@ -73,7 +75,7 @@ void VkEngine::Run()
 				if (msg.wParam != SIZE_MINIMIZED)
 				{
 
-					resizeRequested = true;
+					resizeRequested_ = true;
 				}
 			}
 		}
@@ -85,7 +87,7 @@ void VkEngine::Run()
 			break;
 		}
 
-		if (resizeRequested)
+		if (resizeRequested_)
 			ResizeSwapchain();
 
 		// Do not draw if we are minimized
@@ -127,7 +129,7 @@ void VkEngine::ResizeSwapchain()
 
 	CreateSwapchain(swapchainExtent_.width, swapchainExtent_.height);
 
-	resizeRequested = false;
+	resizeRequested_ = false;
 }
 
 #pragma endregion Run
@@ -199,35 +201,46 @@ void VkEngine::RenderQuickStatsImGui()
 
 void VkEngine::RenderMainMenu()
 {
-    if (ImGui::BeginMainMenuBar())
-    {
-        if (ImGui::BeginMenu("Options"))
-        {
-            ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.f);
-            if (ImGui::MenuItem("Toggle Fullscreen"))
-            {
-                windowContext_->ToggleFullscreen();
-            }
-            if (ImGui::MenuItem("Exit Program"))
-            {
-                PostQuitMessage(0);
-            }
+	if (ImGui::BeginMainMenuBar())
+	{
+		if (ImGui::BeginMenu("Options"))
+		{
+			ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.f);
+			if (ImGui::MenuItem("Toggle Fullscreen"))
+			{
+				windowContext_->ToggleFullscreen();
+			}
+			if (ImGui::MenuItem("Exit Program"))
+			{
+				PostQuitMessage(0);
+			}
 
-        	// Background effect settings
-        	ImGui::Separator();
-        	ComputeEffect& selected = backgroundEffects[currentBackgroundEffect_];
-        	ImGui::Text("Selected effect: %s", selected.name);
-        	ImGui::SliderInt("Effect Index", &currentBackgroundEffect_, 0, backgroundEffects.size() - 1);
-        	ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
-        	ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
-        	ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
-        	ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
+			// Background effect settings
+			ImGui::Separator();
+			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect_];
+			ImGui::Text("Selected effect: %s", selected.name);
+			ImGui::SliderInt("Effect Index", &currentBackgroundEffect_, 0, backgroundEffects.size() - 1);
+			ImGui::InputFloat4("data1", reinterpret_cast<float*>(&selected.data.data1));
+			ImGui::InputFloat4("data2", reinterpret_cast<float*>(&selected.data.data2));
+			ImGui::InputFloat4("data3", reinterpret_cast<float*>(&selected.data.data3));
+			ImGui::InputFloat4("data4", reinterpret_cast<float*>(&selected.data.data4));
 
-            ImGui::EndMenu();
-        }
-        ImGui::EndMainMenuBar();
-    }
+			// Separator for better organization
+			ImGui::Separator();
+
+			// Camera settings
+			ImGui::Text("Camera Settings");
+			ImGui::SliderFloat3("Position", glm::value_ptr(cameraPosition), -100.0f, 100.0f);
+			ImGui::SliderFloat("FOV", &fov, 1.0f, 180.0f);
+			ImGui::InputFloat("Near Plane", &nearPlane, 0.01f, 1.0f, "%.2f");
+			ImGui::InputFloat("Far Plane", &farPlane, 10.0f, 1000.0f, "%.2f");
+
+			ImGui::EndMenu();
+		}
+		ImGui::EndMainMenuBar();
+	}
 }
+
 
 void VkEngine::RenderUI()
 {
@@ -259,7 +272,7 @@ void VkEngine::Init()
 void VkEngine::InitImgui()
 {
 	// Create descriptor pool for IMGUI
-	VkDescriptorPoolSize pool_sizes[] = {
+	const VkDescriptorPoolSize pool_sizes[] = {
 		{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
 		{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
 		{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
@@ -366,7 +379,7 @@ void VkEngine::InitVulkan()
 	                             .select();
 	if (!physDeviceRet)
 	{
-		LOG(ERR, "Failed to select a Vulkan physical device. Error: " + physDeviceRet.error().message(), __LINE__);
+		LOG(ERR, "Failed to select a Vulkan physical device. Error: " + physDeviceRet.error().message());
 		return;
 	}
 
@@ -416,6 +429,8 @@ void VkEngine::Cleanup()
 	if (isInit)
 	{
 		vkDeviceWaitIdle(vd.device_);
+
+		TracyVkDestroy(tracyContext_);
 
 		for (auto & frame : frames_)
 		{
@@ -642,6 +657,7 @@ void VkEngine::InitCommands()
 	{
 		vkDestroyCommandPool(vd.device_, immCommandPool_, nullptr);
 	});
+	tracyContext_ = TracyVkContext(vd.physicalDevice_, vd.device_, graphicsQueue_, immCommandBuffer_);
 }
 
 
@@ -854,7 +870,7 @@ AllocatedImage VkEngine::CreateImage(VkExtent3D size, VkFormat format, VkImageUs
 	VmaAllocationCreateInfo allocinfo
 	{
 		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
-		.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+		.requiredFlags = static_cast<VkMemoryPropertyFlags>(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 	};
 
 	VK_CHECK(vmaCreateImage(allocator_, &imgInfo, &allocinfo, &newImage.image, &newImage.allocation, nullptr));
@@ -959,7 +975,7 @@ VkImageViewCreateInfo VkEngine::ImageViewCreateInfo(VkFormat format, VkImage ima
 	};
 }
 
-void VkEngine::CreateImageWithVMA(const VkImageCreateInfo& imageInfo, VkMemoryPropertyFlags memoryPropertyFlags, VkImage& image, VmaAllocation& allocation)
+void VkEngine::CreateImageWithVMA(const VkImageCreateInfo& imageInfo, VkMemoryPropertyFlags memoryPropertyFlags, VkImage& image, VmaAllocation& allocation) const
 {
 	VmaAllocationCreateInfo allocInfo = {};
 	allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
@@ -1034,7 +1050,7 @@ void VkEngine::TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout
 }
 
 
-VkImageSubresourceRange VkEngine::ImageSubresourceRange(VkImageAspectFlags aspectMask) const
+VkImageSubresourceRange VkEngine::ImageSubresourceRange(VkImageAspectFlags aspectMask)
 {
 	return VkImageSubresourceRange
 	{
@@ -1091,7 +1107,7 @@ void VkEngine::UnmapBuffer(const AllocatedBuffer& buffer)
 	vmaUnmapMemory(allocator_, buffer.allocation);
 }
 
-void VkEngine::DestroyBuffer(const AllocatedBuffer& buffer)
+void VkEngine::DestroyBuffer(const AllocatedBuffer& buffer) const
 {
 	vmaDestroyBuffer(allocator_, buffer.buffer, buffer.allocation);
 }
@@ -1169,6 +1185,8 @@ void VkEngine::InitPipelines()
 	InitBackgroundPipelines();
 
 	InitMeshPipeline();
+
+	metalRoughMaterial.BuildPipelines(this, vd.device_);
 }
 
 VkPipelineShaderStageCreateInfo VkEngine::PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage, VkShaderModule shaderModule)
@@ -1238,12 +1256,12 @@ void VkEngine::InitBackgroundPipelines()
 	VK_CHECK(vkCreatePipelineLayout(vd.device_, &computeLayout, nullptr, &gradientPipelineLayout_));
 
 	VkShaderModule gradientShader;
-	if (!load->LoadShader("shaders/gradient_color.comp.spv", vd.device_, &gradientShader)) {
+	if (!loader_.LoadShader("shaders/gradient_color.comp.spv", vd.device_, &gradientShader)) {
 		LOG(ERR, "Error when building the compute shader");
 	}
 
 	VkShaderModule skyShader;
-	if (!load->LoadShader("shaders/sky.comp.spv", vd.device_, &skyShader)) {
+	if (!loader_.LoadShader("shaders/sky.comp.spv", vd.device_, &skyShader)) {
 		LOG(ERR,"Error when building the compute shader");
 	}
 
@@ -1297,13 +1315,13 @@ void VkEngine::InitBackgroundPipelines()
 void VkEngine::InitMeshPipeline()
 {
     VkShaderModule triangleFragShader;
-    if (!load->LoadShader("shaders/texImg.frag.spv", vd.device_, &triangleFragShader))
+    if (!loader_.LoadShader("shaders/texImg.frag.spv", vd.device_, &triangleFragShader))
     {
         LOG(ERR, "Error when building the triangle fragment shader module");
     }
 
     VkShaderModule triangleVertexShader;
-    if (!load->LoadShader("shaders/coloredTriangleMesh.vert.spv", vd.device_, &triangleVertexShader))
+    if (!loader_.LoadShader("shaders/coloredTriangleMesh.vert.spv", vd.device_, &triangleVertexShader))
     {
         LOG(ERR, "Error when building the triangle vertex shader module");
     }
@@ -1357,7 +1375,7 @@ void VkEngine::InitMeshPipeline()
 void VkEngine::InitDescriptors()
 {
 	//create a descriptor pool that will hold 10 sets with 1 image each
-	std::vector<DescriptorAllocator::PoolSizeRatio> sizes =
+	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes =
 	{
 		{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}
 	};
@@ -1452,7 +1470,7 @@ VkDescriptorSetLayout DescriptorLayoutBuilder::Build(VkDevice device, VkShaderSt
 }
 
 
-void DescriptorAllocator::InitPool(VkDevice device, u32 maxSets, std::span<PoolSizeRatio> poolRatios)
+void DescriptorAllocatorGrowable::InitPool(VkDevice device, u32 maxSets, std::span<PoolSizeRatio> poolRatios)
 {
 	std::vector<VkDescriptorPoolSize> poolSizes;
 	for (const auto& ratio : poolRatios)
@@ -1475,17 +1493,17 @@ void DescriptorAllocator::InitPool(VkDevice device, u32 maxSets, std::span<PoolS
 	vkCreateDescriptorPool(device, &poolInfo, nullptr, &pool);
 }
 
-void DescriptorAllocator::ClearDescriptors(VkDevice device) const
+void DescriptorAllocatorGrowable::ClearDescriptors(VkDevice device) const
 {
 	vkResetDescriptorPool(device, pool, 0);
 }
 
-void DescriptorAllocator::DestroyPool(VkDevice device)
+void DescriptorAllocatorGrowable::DestroyPool(VkDevice device)
 {
 	vkDestroyDescriptorPool(device, pool, nullptr);
 }
 
-VkDescriptorSet DescriptorAllocator::Allocate(VkDevice device, VkDescriptorSetLayout layout)
+VkDescriptorSet DescriptorAllocatorGrowable::Allocate(VkDevice device, VkDescriptorSetLayout layout)
 {
 	VkDescriptorSetAllocateInfo allocInfo
 	{
@@ -1651,39 +1669,57 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 	}
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout_, 0, 1, &imageSet, 0, nullptr);
 
-
-	// Calculate view and projection matrices
-    glm::mat4 view = glm::translate(glm::vec3{ 0, 0, -5 });
-    glm::mat4 projection = glm::perspective(glm::radians(70.f), static_cast<float>(drawExtent_.width) / static_cast<float>(drawExtent_.height), 0.1f, 10000.f);
+	// Calculate view and projection matrices based on ImGui-controlled parameters
+	glm::mat4 view = glm::translate(glm::mat4(1.0f), cameraPosition);
+	glm::mat4 projection = glm::perspective(glm::radians(fov), static_cast<float>(drawExtent_.width) / static_cast<float>(drawExtent_.height), nearPlane, farPlane);
 
     // Invert the Y direction on projection matrix so that we are more similar to OpenGL and glTF axis
     projection[1][1] *= -1;
 
 
-	GPUDrawPushConstants push_constants{};
-	push_constants.worldMatrix = projection * view;
-	push_constants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress;
 
-	vkCmdPushConstants(cmd, meshPipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
-	vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+	// Iterate over each mesh and draw it separately
+	int meshIndex = 0;
+	for (auto& mesh : testMeshes)
+	{
+		for (auto& surface : mesh->surfaces)
+		{
+			// Apply a different translation for each mesh to separate them
+			glm::mat4 model = glm::translate(glm::vec3{ meshIndex * 2.0f, 0.0f, 0.0f });
 
-	// Draw the monkey head
-	vkCmdDrawIndexed(cmd, testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
+			GPUDrawPushConstants push_constants{};
+			push_constants.worldMatrix = projection * view * model;
+			push_constants.vertexBuffer = mesh->meshBuffers.vertexBufferAddress;
+
+			vkCmdPushConstants(cmd, meshPipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+			vkCmdBindIndexBuffer(cmd, mesh->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+			// Draw the mesh
+			vkCmdDrawIndexed(cmd, surface.count, 1, surface.startIndex, 0, 0);
+		}
+		meshIndex++;
+	}
 
 	vkCmdEndRendering(cmd);
 }
 
 void VkEngine::InitDefaultData()
 {
-    if (!meshLoaded_)
+    if (meshLoaded_)
     {
-        auto loadedMeshes = loader_.loadGltfMeshes(this, "assets\\basicmesh.glb");
-        if (loadedMeshes.has_value())
-        {
-            testMeshes = loadedMeshes.value();
-            meshLoaded_ = true;
-        }
+		return;
     }
+
+	const std::filesystem::path meshPath = "assets\\basicmesh.glb";
+	if (auto loadedMeshes = loader_.LoadGltfMeshes(this, meshPath))
+	{
+		testMeshes = std::move(loadedMeshes.value());
+		meshLoaded_ = true;
+		LOG(INFO, "Mesh loaded successfully");
+	} else
+	{
+		LOG(ERR, "Failed to load mesh: ", meshPath);
+	}
 
     // 3 default textures, white, grey, black. 1 pixel each
     {
@@ -1734,21 +1770,60 @@ void VkEngine::InitDefaultData()
         }
     }
 
-    // Add destruction callbacks to the deletion queue
-    mainDeletionQueue_.pushFunction([&]() {
-        vkDestroySampler(vd.device_, defaultSamplerNearest_, nullptr);
-        vkDestroySampler(vd.device_, defaultSamplerLinear_, nullptr);
+	GLTFMetallicRoughness::MaterialResources materialResources
+	{
+		.colorImage = whiteImage_,
+		.colorSampler = defaultSamplerLinear_,
+		.metalRoughImage = whiteImage_,
+		.metalRoughSampler = defaultSamplerLinear_
+	};
 
-        DestroyImage(whiteImage_);
-        DestroyImage(greyImage_);
-        DestroyImage(blackImage_);
-        DestroyImage(errorCheckerboardImage_);
-    });
+	// set the uniform buffer for the material data
+	AllocatedBuffer materialConstants = CreateBuffer(sizeof(GLTFMetallicRoughness::MaterialConstants), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+	// write the buffer
+	void* mappedData = nullptr;
+	// Map the memory for the buffer
+	if (vmaMapMemory(allocator_, materialConstants.allocation, &mappedData) == VK_SUCCESS)
+	{
+		auto* sceneUniformData = static_cast<GLTFMetallicRoughness::MaterialConstants*>(mappedData);
+		sceneUniformData->colorFactors = glm::vec4{1, 1, 1, 1};
+		sceneUniformData->metalRoughnessFactors = glm::vec4{1, 0.5, 0, 0};
+
+		// Unmap the memory after writing
+		vmaUnmapMemory(allocator_, materialConstants.allocation);
+	}
+	else
+	{
+		LOG(ERR, "Failed to map memory for material constants");
+	}
+
+	// Register destruction callbacks in the deletion queue
+	mainDeletionQueue_.pushFunction([=, this]()
+	{
+		DestroyBuffer(materialConstants);
+		vkDestroySampler(vd.device_, defaultSamplerNearest_, nullptr);
+		vkDestroySampler(vd.device_, defaultSamplerLinear_, nullptr);
+
+		DestroyImage(whiteImage_);
+		DestroyImage(greyImage_);
+		DestroyImage(blackImage_);
+		DestroyImage(errorCheckerboardImage_);
+	});
+
+	// Set up default data
+	defaultData = metalRoughMaterial.WriteMaterial(
+		vd.device_,
+		MaterialPass::MainColor,
+		materialResources,
+		globalDescriptorAllocator
+	);
 }
 
 
 void VkEngine::Draw()
 {
+	// TracyVkZone(tracyContext_, immCommandBuffer_, "Frame Start");
     // Wait until the GPU has finished rendering the last frame. Timeout of 1 second
     VK_CHECK(vkWaitForFences(vd.device_, 1, &GetCurrentFrame().renderFence_, true, 1000000000));
     GetCurrentFrame().deletionQueue_.Flush();
@@ -1758,8 +1833,9 @@ void VkEngine::Draw()
 
     u32 swapchainImageIndex;
 	VkResult e = vkAcquireNextImageKHR(vd.device_, swapchain_, 1000000000, GetCurrentFrame().swapChainSemaphore_, nullptr, &swapchainImageIndex);
-	if (e == VK_ERROR_OUT_OF_DATE_KHR) {
-		resizeRequested = true;
+	if (e == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		resizeRequested_ = true;
 		return ;
 	}
     VkCommandBuffer cmd = GetCurrentFrame().mainCommandBuffer_;
@@ -1829,10 +1905,12 @@ void VkEngine::Draw()
     };
 
 	VkResult presentResult = vkQueuePresentKHR(graphicsQueue_, &presentInfo_);
-	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
-		resizeRequested = true;
+	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		resizeRequested_ = true;
 	}
     frameNumber_++;
+	FrameMark;
 }
 
 #pragma endregion Draw

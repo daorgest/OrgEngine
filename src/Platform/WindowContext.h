@@ -5,6 +5,9 @@
 #pragma once
 
 #include <Windows.h>
+// #ifdef _DEBUG
+// 	#define TRACY_ENABLE
+// #endif
 
 #include "../Core/Logger.h"
 #include "../Core/PrimTypes.h"
@@ -16,8 +19,8 @@ namespace Platform
 	{
 		HWND							hwnd{};
 		HINSTANCE						hInstance{};
-		u32	screenWidth =				GetSystemMetrics(SM_CXSCREEN) / 2;
-		u32	screenHeight =				GetSystemMetrics(SM_CYSCREEN) / 2;
+		u32	screenWidth =				GetSystemMetrics(SM_CXSCREEN);
+		u32	screenHeight =				GetSystemMetrics(SM_CYSCREEN);
 		u32	windowPosX =				(GetSystemMetrics(SM_CXSCREEN) - screenWidth) / 2;
 		u32	windowPosY =				(GetSystemMetrics(SM_CYSCREEN) - screenHeight) / 2;
 		bool isFocused =				false;

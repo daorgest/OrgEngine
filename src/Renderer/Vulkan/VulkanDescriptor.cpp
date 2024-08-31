@@ -6,6 +6,8 @@
 
 #include <vulkan/vk_enum_string_helper.h>
 
+#include "VulkanHeader.h"
+
 using namespace GraphicsAPI::Vulkan;
 
 void VkDescriptor::Init(VkDevice device, u32 maxSets, std::span<PoolSizeRatio> poolRatios)

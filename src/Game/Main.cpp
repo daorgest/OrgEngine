@@ -1,6 +1,8 @@
 #include <iostream>
+
 #include "../Platform/PlatformWindows.h"
 #include "../Renderer/Vulkan/VulkanMain.h"
+#include "Application.h"
 
 #ifdef _WIN32
 void InitConsole()
@@ -22,18 +24,13 @@ void InitConsole()
 
 int main(int argc, char** argv)
 {
+	Logger::Init();
 #ifdef DEBUG
-    Logger::Init();
     InitConsole();
 #endif
 
-    Platform::WindowContext windowContext;
-    Platform::Win32 platform(&windowContext);
-    GraphicsAPI::Vulkan::VkEngine engine(&windowContext);
-
-    platform.Init();
-    engine.Init();
-    engine.Run();
+    Application app;
+	app.Run();
 
     return 0;
 }

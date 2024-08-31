@@ -4,12 +4,14 @@
 #pragma once
 #ifdef VULKAN_BUILD
 
-
-// Vulkan Includes
 #include "VulkanDescriptor.h"
 #include "VulkanHeader.h"
 #include "VulkanLoader.h"
-#include "VulkanPipelines.h"
+#include "VulkanMaterials.h"
+#include "VulkanSceneNode.h"
+
+// Vulkan Includes
+#include <tracy/TracyVulkan.hpp>
 
 namespace GraphicsAPI::Vulkan
 {
@@ -74,11 +76,11 @@ namespace GraphicsAPI::Vulkan
 		VkDescriptor frameDescriptors_;
 	};
 
-	class VkEngine : public ResourceLoader
+	class VkEngine
 	{
 	public:
 		explicit VkEngine(Platform::WindowContext *winManager);
-		~VkEngine() override;
+		~VkEngine();
 
 		void Run();
 		void Cleanup();
@@ -97,9 +99,6 @@ namespace GraphicsAPI::Vulkan
 		void InitImgui();
 		void InitMeshPipeline();
 		void InitDefaultData();
-
-		void CreateCheckerboardImage();
-		void CreateSamplers();
 		// Rendering
 		void Draw();
 		void ResizeSwapchain();
@@ -110,8 +109,8 @@ namespace GraphicsAPI::Vulkan
 		void RenderMainMenu();
 		void RenderMemoryUsageImGui();
 		void RenderQuickStatsImGui();
-		void ImGuiMainMenu();
-		void UpdateFPS();
+		bool IsRenderingStopped() const { return stopRendering_; }
+		bool IsResizeRequested() const { return resizeRequested_; }
 
 		// Utility Functions
 		static VkPipelineShaderStageCreateInfo PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage,
@@ -128,14 +127,14 @@ namespace GraphicsAPI::Vulkan
 								 VkSemaphoreSubmitInfo *waitSemaphoreInfo);
 		VkFenceCreateInfo FenceCreateInfo(VkFenceCreateFlags flags) const;
 		VkSemaphoreCreateInfo SemaphoreCreateInfo(VkSemaphoreCreateFlags flags) const;
-		VkImageCreateInfo ImageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
-		VkImageViewCreateInfo ImageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
+		static VkImageCreateInfo ImageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
+		static VkImageViewCreateInfo ImageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
 		void CreateImageWithVMA(const VkImageCreateInfo &imageInfo, VkMemoryPropertyFlags memoryPropertyFlags,
-								VkImage &image, VmaAllocation &allocation);
+								VkImage &image, VmaAllocation &allocation) const;
 		static void CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize,
 							  VkExtent2D dstSize);
 		AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-		void DestroyBuffer(const AllocatedBuffer &buffer);
+		void DestroyBuffer(const AllocatedBuffer &buffer) const;
 		void CleanupAlloc();
 		GPUMeshBuffers UploadMesh(std::span<u32> indices, std::span<Vertex> vertices);
 		VkDeviceAddress GetBufferDeviceAddress(VkBuffer buffer) const;
@@ -144,7 +143,7 @@ namespace GraphicsAPI::Vulkan
 		void UnmapBuffer(const AllocatedBuffer &buffer);
 		void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout,
 							 VkImageLayout newLayout) const;
-		[[nodiscard]] VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask) const;
+		[[nodiscard]] static VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask) ;
 		static VkRenderingInfo RenderInfo(VkExtent2D extent, VkRenderingAttachmentInfo *colorAttachment,
 								   VkRenderingAttachmentInfo *depthAttachment);
 		VkRenderingAttachmentInfo AttachmentInfo(VkImageView view, VkClearValue *clear, VkImageLayout layout);
@@ -175,14 +174,13 @@ namespace GraphicsAPI::Vulkan
 	private:
 		bool isInit = false;
 		bool stopRendering_ = false;
-		bool resizeRequested = false;
+		bool resizeRequested_ = false;
 		float renderScale = 1.0f;
 		float spacing = 5.0f;
 		float fps_ = 0.0f;
 		bool meshLoaded_ = false;
 
 		Platform::WindowContext* windowContext_;
-		VkLoader* load{};
 		VulkanData vd;
 		VmaAllocator allocator_;
 		VkQueue graphicsQueue_{};
@@ -211,7 +209,7 @@ namespace GraphicsAPI::Vulkan
 
 		VkExtent2D drawExtent_{};
 
-		DescriptorAllocator globalDescriptorAllocator{};
+		DescriptorAllocatorGrowable globalDescriptorAllocator{};
 
 		VkDescriptorSet drawImageDescriptors_{};
 		VkDescriptorSetLayout drawImageDescriptorLayout_{};
@@ -243,12 +241,17 @@ namespace GraphicsAPI::Vulkan
 		std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 		u8 meshSelector = testMeshes.size();
 
+		// Materials
+		MaterialInstance defaultData;
+		GLTFMetallicRoughness metalRoughMaterial;
+
 		// Camera and projection parameters
 		glm::vec3 cameraPosition = glm::vec3(0, 0, -5);
 		float fov = 70.0f;
 		float nearPlane = 0.1f;
 		float farPlane = 10000.0f;
 
+		TracyVkCtx tracyContext_{};
 		// Deletion queue
 		DeletionQueue mainDeletionQueue_;
 	};

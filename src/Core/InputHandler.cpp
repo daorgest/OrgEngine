@@ -1,128 +1,185 @@
-//
-// Created by Orgest on 4/23/2024.
-//
 #include "InputHandler.h"
 
-#include "Logger.h"
+#include <algorithm>
 
-// Controller::Controller(u32 index)
-// {
-// }
+// ControllerButton Implementation
+
+void ControllerButton::Update(bool isPressed)
+{
+    if (isPressed)
+    {
+        if (!held)
+        {
+            pressed = true;
+        }
+        held = true;
+        released = false;
+    }
+    else
+    {
+        if (held)
+        {
+            released = true;
+        }
+        pressed = false;
+        held = false;
+    }
+}
+
+void ControllerButton::Reset()
+{
+    pressed = false;
+    released = false;
+}
+
+// KeyboardButton Implementation (identical to ControllerButton for simplicity)
+
+void KeyboardButton::Update(bool isPressed)
+{
+    if (isPressed)
+    {
+        if (!held)
+        {
+            pressed = true;
+        }
+        held = true;
+        released = false;
+    }
+    else
+    {
+        if (held)
+        {
+            released = true;
+        }
+        pressed = false;
+        held = false;
+    }
+}
+
+void KeyboardButton::Reset()
+{
+    pressed = false;
+    released = false;
+}
+
+// Controller Implementation
 
 void Controller::Update()
 {
-	PollInput();
+    PollInput();
+
+    // Reset button states for the next frame after processing
+    for (auto& button : currentState.buttons)
+    {
+        button.Reset();
+    }
 }
 
 void Controller::PollInput()
 {
-	XINPUT_STATE state;
-	ZeroMemory(&state, sizeof(XINPUT_STATE));
+    XINPUT_STATE state{};
+    DWORD result = XInputGetState(gamepadIndex, &state);
 
+    if (result == ERROR_SUCCESS)
+    {
+        isConnected = true;
 
-	DWORD result = XInputGetState(gamepadIndex, &state) ;
-	if (result == ERROR_SUCCESS)
-	{
-		currentState.Buttons =		state.Gamepad.wButtons;
-		currentState.LeftStickX =	state.Gamepad.sThumbLX;
-		currentState.LeftStickY =	state.Gamepad.sThumbLY;
-		currentState.RightStickX =	state.Gamepad.sThumbRX;
-		currentState.RightStickY =	state.Gamepad.sThumbRY;
-		currentState.LeftTrigger =	state.Gamepad.bLeftTrigger;
-		currentState.RightTrigger = state.Gamepad.bRightTrigger;
-	}
-	else {
-		currentState = {};
-	}
+        // Update each button's state
+        for (int i = 0; i < ControllerButton::XboxButton::BUTTONS_COUNT; ++i)
+        {
+            bool isPressed = state.Gamepad.wButtons & (1 << i);
+            currentState.buttons[i].Update(isPressed);
+        }
+
+        currentState.leftStickX = state.Gamepad.sThumbLX;
+        currentState.leftStickY = state.Gamepad.sThumbLY;
+        currentState.rightStickX = state.Gamepad.sThumbRX;
+        currentState.rightStickY = state.Gamepad.sThumbRY;
+        currentState.leftTrigger = state.Gamepad.bLeftTrigger;
+        currentState.rightTrigger = state.Gamepad.bRightTrigger;
+    }
+    else
+    {
+        isConnected = false;
+    }
 }
 
-// u8 Controller::GetTriggerValues(Controller& controller) const
-// {
-// 	switch (controller)
-// 	{
-// 		case Trigger::LeftTrigger:	return currentState.LeftTrigger;
-// 		case Trigger::RightTrigger: return currentState.RightTrigger;
-// 		default:					return 0;
-// 	}
-// }
-//
-// i16 Controller::GetStickValues(Controller& controller) const
-// {
-// 	switch (controller)
-// 	{
-// 		case Stick::LeftStickX:		return currentState.LeftStickX;
-// 		case Stick::LeftStickY:		return currentState.LeftStickY;
-// 		case Stick::RightStickX:	return currentState.RightStickX;
-// 		case Stick::RightStickY:	return currentState.RightStickY;
-// 		default:					return 0;
-// 	}
-// }
-//
-// void Controller::ProcessControllerAfter(Controller& controller)
-// {
-// 	for (const int i : 14)
-// 	{
-//
-// 	}
-// }
+// Input Implementation
+
+void Input::updateUsingController()
+{
+    usingController = std::ranges::any_of(controllers, [](const Controller& c)
+    {
+        return c.isConnected;
+    });
+}
+
+bool Input::isControllerButtonPressed(ControllerButton::XboxButton button, u32 controllerIndex) const
+{
+    return controllers[controllerIndex].currentState.buttons[button].pressed;
+}
+
+bool Input::isKeyPressed(KeyboardButton::Keys key) const
+{
+    return keyboard[key].pressed;
+}
+
+bool Input::isMouseButtonPressed(const KeyboardButton& button)
+{
+    return button.pressed;
+}
+
+// New method to check for input with fallback
+bool Input::isInputActive(KeyboardButton::Keys key, ControllerButton::XboxButton button, u32 controllerIndex) const
+{
+    if (usingController && controllers[controllerIndex].isConnected)
+    {
+        return isControllerButtonPressed(button, controllerIndex);
+    }
+    else
+    {
+        return isKeyPressed(key);
+    }
+}
 
 void processInputAfter(Input& input)
 {
-	for (int i = 0; i < Button::BUTTONS_COUNT; i++)
-	{
-		input.keyboard[i].pressed = 0;
-		input.keyboard[i].released = 0;
-		input.keyboard[i].altWasDown = 0;
-	}
+    // Reset keyboard state
+    for (auto& key : input.keyboard)
+    {
+        key.Reset();
+    }
 
-	for (int i = 0; i < Controller::XboxButton::BUTTONS_CONUNT; i++)
-	{
-		input.xboxButtons[i].pressed = 0;
-		input.xboxButtons[i].released = 0;
-	}
+    // Update and reset controller state
+    for (auto& controller : input.controllers)
+    {
+        if (controller.isConnected)
+        {
+            controller.Update();
+        }
+    }
 
-	input.lMouseButton.pressed = 0;
-	input.lMouseButton.released = 0;
-	input.lMouseButton.altWasDown = 0;
+    // Reset mouse button states
+    input.lMouseButton.Reset();
+    input.rMouseButton.Reset();
+    input.mouse4Button.Reset();
+    input.mouse5Button.Reset();
 
-	input.rMouseButton.pressed = 0;
-	input.rMouseButton.released = 0;
-	input.rMouseButton.altWasDown = 0;
-
-
-	ZeroMemory(static_cast<void*>(input.typedInput), sizeof(input.typedInput));
+    // Clear typed input
+    input.typedInput.fill(0);
 }
 
 void resetInput(Input& input)
 {
-	input.lMouseButton = {};
-	input.rMouseButton = {};
+    input.lMouseButton = {};
+    input.rMouseButton = {};
 
-	input.keyboard.fill(Button{});
-	input.typedInput.fill(0);
+    input.keyboard.fill(KeyboardButton{});
+    input.typedInput.fill(0);
 }
 
-
-//newState == 1 means pressed else released
-void processEventButton(Button& b, bool newState)
+// Process button events: newState == 1 means pressed, else released
+void processEventButton(KeyboardButton& b, bool newState)
 {
-	//LOG(INFO, "Processing Event: ", (newState ? "Pressed" : "Released"));
-	if (newState)
-	{
-		if (!b.held)
-		{
-			//LOG(INFO, "Button state changed to Pressed");
-			b.pressed = true;
-			b.held = true;
-			b.released = false;
-		}
-	}
-	else
-	{
-		//LOG(INFO, "Button state changed to Held");
-		b.pressed = false;
-		b.held = false;
-		b.released = true;
-	}
+    b.Update(newState == 1);
 }
-

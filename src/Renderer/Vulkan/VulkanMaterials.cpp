@@ -4,20 +4,22 @@
 
 #include "VulkanMaterials.h"
 
+#include "VulkanMain.h"
+
 using namespace GraphicsAPI::Vulkan;
 
 
-void VkMaterials::BuildPipelines(VkEngine* engine)
+void GLTFMetallicRoughness::BuildPipelines(VkEngine* engine, VkDevice device)
 {
 	// Load shaders
 	VkShaderModule meshFragShader;
-	if (!load->LoadShader("../../shaders/mesh.frag.spv", vd->device_, &meshFragShader)) {
+	if (!LoadShader("shaders/mesh.frag.spv", device, &meshFragShader)) {
 		fmt::println("Error when building the triangle fragment shader module");
 		return;
 	}
 
 	VkShaderModule meshVertexShader;
-	if (!load->LoadShader("../../shaders/mesh.vert.spv", vd->device_, &meshVertexShader)) {
+	if (!LoadShader("shaders/mesh.vert.spv", device, &meshVertexShader)) {
 		fmt::println("Error when building the triangle vertex shader module");
 		return;
 	}
@@ -34,11 +36,11 @@ void VkMaterials::BuildPipelines(VkEngine* engine)
 	layoutBuilder.AddBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 	layoutBuilder.AddBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-	gLTFMetallicRoughness.materialLayout = layoutBuilder.Build(vd->device_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+	materialLayout = layoutBuilder.Build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	VkDescriptorSetLayout layouts[] = { // NOLINT(*-avoid-c-arrays)
 		engine->gpuSceneDataDescriptorLayout_,
-		gLTFMetallicRoughness.materialLayout
+		materialLayout
 	};
 
 	// Create pipeline layout
@@ -49,10 +51,10 @@ void VkMaterials::BuildPipelines(VkEngine* engine)
 	mesh_layout_info.pushConstantRangeCount = 1;
 
 	VkPipelineLayout newLayout;
-	VK_CHECK(vkCreatePipelineLayout(vd->device_, &mesh_layout_info, nullptr, &newLayout));
+	VK_CHECK(vkCreatePipelineLayout(device, &mesh_layout_info, nullptr, &newLayout));
 
-	gLTFMetallicRoughness.opaquePipeline.layout = newLayout;
-	gLTFMetallicRoughness.transparentPipeline.layout = newLayout;
+	opaquePipeline.layout = newLayout;
+	transparentPipeline.layout = newLayout;
 
 	// Build the pipeline
 	PipelineBuilder pipelineBuilder;
@@ -68,14 +70,40 @@ void VkMaterials::BuildPipelines(VkEngine* engine)
 	pipelineBuilder.data.config.layout = newLayout;
 
 	// Build opaque pipeline
-	gLTFMetallicRoughness.opaquePipeline.pipeline = pipelineBuilder.BuildPipeline(vd->device_, pipelineBuilder.data);
+	opaquePipeline.pipeline = pipelineBuilder.BuildPipeline(device, pipelineBuilder.data);
 
 	// Build transparent pipeline
 	pipelineBuilder.EnableBlendingAdditive();
 	pipelineBuilder.EnableDepthTest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
-	gLTFMetallicRoughness.transparentPipeline.pipeline = pipelineBuilder.BuildPipeline(vd->device_, pipelineBuilder.data);
+	transparentPipeline.pipeline = pipelineBuilder.BuildPipeline(device, pipelineBuilder.data);
 
 	// Destroy shaders
-	vkDestroyShaderModule(vd->device_, meshFragShader, nullptr);
-	vkDestroyShaderModule(vd->device_, meshVertexShader, nullptr);
+	vkDestroyShaderModule(device, meshFragShader, nullptr);
+	vkDestroyShaderModule(device, meshVertexShader, nullptr);
 }
+
+MaterialInstance GLTFMetallicRoughness::WriteMaterial(VkDevice device, MaterialPass pass,
+													  const MaterialResources& resources,
+													  DescriptorAllocatorGrowable& descriptorAllocator)
+{
+	MaterialInstance matData{};
+	matData.passType = pass;
+	if (pass == MaterialPass::Transparent) {
+		matData.pipeline = &transparentPipeline;
+	}
+	else {
+		matData.pipeline = &opaquePipeline;
+	}
+
+	matData.materialSet = descriptorAllocator.Allocate(device, materialLayout);
+
+	writer.Clear();
+	writer.WriteBuffer(0, resources.dataBuffer, sizeof(MaterialConstants), resources.dataBufferOffset, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	writer.WriteImage(1, resources.colorImage.imageView, resources.colorSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	writer.WriteImage(2, resources.metalRoughImage.imageView, resources.metalRoughSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+	writer.UpdateSet(device, matData.materialSet);
+
+	return matData;
+}
+

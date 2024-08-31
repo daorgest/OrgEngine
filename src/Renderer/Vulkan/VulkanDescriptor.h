@@ -5,8 +5,14 @@
 #ifndef VULKANDESCRIPTOR_H
 #define VULKANDESCRIPTOR_H
 
+#pragma once
 
-#include "VulkanHeader.h"
+#include <deque>
+#include <span>
+#include <vector>
+#include <vulkan/vulkan.h>
+
+#include "../../Core/PrimTypes.h"
 
 namespace GraphicsAPI::Vulkan
 {
@@ -21,7 +27,7 @@ namespace GraphicsAPI::Vulkan
 									VkDescriptorSetLayoutCreateFlags flags = 0);
 	};
 
-	struct DescriptorAllocator
+	struct DescriptorAllocatorGrowable
 	{
 		struct PoolSizeRatio
 		{

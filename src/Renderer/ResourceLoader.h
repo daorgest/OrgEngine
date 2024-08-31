@@ -4,12 +4,7 @@
 
 
 #pragma once
-#include <filesystem>
 #include <fstream>
-#include <memory>
-#include <optional>
-#include <stdexcept>
-#include <string>
 #include <vector>
 #include "../Core/PrimTypes.h"
 namespace GraphicsAPI

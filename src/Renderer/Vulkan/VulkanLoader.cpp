@@ -5,12 +5,17 @@
 #include "VulkanLoader.h"
 #include "VulkanMain.h"
 
+#include <fastgltf/core.hpp>
+#include <fastgltf/glm_element_traits.hpp>
+
 
 namespace GraphicsAPI::Vulkan
 {
 
-	bool VkLoader::LoadShader(const std::filesystem::path& filePath, VkDevice device, VkShaderModule* outShaderModule) {
-		try {
+	bool VkLoader::LoadShader(const std::filesystem::path& filePath, VkDevice device, VkShaderModule* outShaderModule) const
+	{
+		try
+		{
 			std::vector<u32> buffer = ReadFile(filePath);
 
 			VkShaderModuleCreateInfo createInfo
@@ -21,88 +26,176 @@ namespace GraphicsAPI::Vulkan
 			};
 
 			VkShaderModule shaderModule;
-			if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+			if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
+			{
 				throw std::runtime_error("Failed to create shader for file: " + filePath.string());
 			}
 
 			*outShaderModule = shaderModule;
 			return true;
 		}
-		catch (const std::exception& e) {
+		catch (const std::exception& e)
+		{
 			LOG(ERR, e.what());
 			return false;
 		}
 	}
 
-	std::optional<std::vector<std::shared_ptr<MeshAsset>>> VkLoader::loadGltfMeshes(VkEngine *engine,
-																		  const std::filesystem::path &filePath)
+	std::optional<std::vector<std::shared_ptr<MeshAsset>>> VkLoader::LoadGltfMeshes(VkEngine* engine,
+                                                                               const std::filesystem::path& filePath)
 	{
-		auto data = fastgltf::GltfDataBuffer::FromPath(filePath);
+		LOG(INFO, "Loading GLTF model: ", filePath);
+
+		auto gltfFile = fastgltf::GltfDataBuffer::FromPath(filePath);
+		if (!gltfFile)
+		{
+			LOG(ERR, "Failed to load GLTF file: ", filePath);
+			return std::nullopt;
+		}
+
 		constexpr auto gltfOptions = fastgltf::Options::LoadExternalBuffers;
 
-		fastgltf::Asset gltf;
 		fastgltf::Parser parser{};
-		auto load = parser.loadGltf(data.get(), filePath.parent_path(), gltfOptions);
-		if (!load)
+		auto loadResult = parser.loadGltfBinary(gltfFile.get(), filePath.parent_path(), gltfOptions);
+		if (!loadResult)
 		{
-			LOG(ERR, "Failed to load glTF: {} \n", fastgltf::to_underlying(load.error()));
-			return {};
+			LOG(ERR, "Failed to parse GLTF: {} \n", fastgltf::to_underlying(loadResult.error()));
+			return std::nullopt;
 		}
-		gltf = std::move(load.get());
 
+		fastgltf::Asset gltf = std::move(loadResult.get());
 		std::vector<std::shared_ptr<MeshAsset>> meshes;
 		std::vector<u32> indices;
 		std::vector<Vertex> vertices;
 
-		for (fastgltf::Mesh& mesh : gltf.meshes) {
+		for (fastgltf::Mesh& mesh : gltf.meshes)
+		{
 			MeshAsset newMesh;
 			newMesh.name = mesh.name;
 
 			indices.clear();
 			vertices.clear();
 
-			for (auto&& primitive : mesh.primitives) {
+			for (auto&& primitive : mesh.primitives)
+			{
 				GeoSurface newSurface{};
-				newSurface.startIndex = static_cast<u32>(indices.size());
-				newSurface.count = static_cast<u32>(gltf.accessors[primitive.indicesAccessor.value()].count);
+				auto	   indicesAccessorIndex = primitive.indicesAccessor.value();
 
-				loadIndices(gltf.accessors[primitive.indicesAccessor.value()], indices, vertices, gltf);
-				loadVertices(gltf.accessors[primitive.findAttribute("POSITION")->accessorIndex], vertices, gltf);
+				if (indicesAccessorIndex >= gltf.accessors.size())
+				{
+					LOG(ERR, "Invalid indices accessor index for mesh: ", mesh.name);
+					continue;
+				}
 
-				loadAttribute(primitive, "NORMAL", gltf,
-							  [&](const fastgltf::Accessor &accessor)
-							  {
-								  fastgltf::iterateAccessorWithIndex<glm::vec3>(
-									  gltf, accessor, [&](glm::vec3 v, size_t index)
-									  { vertices[vertices.size() - accessor.count + index].normal = v; });
-							  });
+				fastgltf::Accessor& indexAccessor = gltf.accessors[indicesAccessorIndex];
+				newSurface.startIndex			  = static_cast<u32>(indices.size());
+				newSurface.count				  = static_cast<u32>(indexAccessor.count);
 
-				loadAttribute(primitive, "TEXCOORD_0", gltf,
-							  [&](const fastgltf::Accessor &accessor)
-							  {
-								  fastgltf::iterateAccessorWithIndex<glm::vec2>(
-									  gltf, accessor,
-									  [&](glm::vec2 v, size_t index)
-									  {
-										  vertices[vertices.size() - accessor.count + index].uv_x = v.x;
-										  vertices[vertices.size() - accessor.count + index].uv_y = v.y;
-									  });
-							  });
+				size_t initialVertex = vertices.size();
+				indices.reserve(indices.size() + indexAccessor.count);
 
-				loadAttribute(primitive, "COLOR_0", gltf,
-							  [&](const fastgltf::Accessor &accessor)
-							  {
-								  fastgltf::iterateAccessorWithIndex<glm::vec4>(
-									  gltf, accessor, [&](glm::vec4 v, size_t index)
-									  { vertices[vertices.size() - accessor.count + index].color = v; });
-							  });
+				fastgltf::iterateAccessor<u32>(gltf, indexAccessor,
+											   [&](const u32 index) { indices.push_back(index + initialVertex); });
+
+				// Load vertex positions
+				auto posAttribute = primitive.findAttribute("POSITION");
+				if (posAttribute != primitive.attributes.end())
+				{
+					auto positionAccessorIndex = posAttribute->accessorIndex;
+					if (positionAccessorIndex >= gltf.accessors.size())
+					{
+						LOG(ERR, "Invalid position accessor index for mesh: ", mesh.name);
+						continue;
+					}
+
+					fastgltf::Accessor& posAccessor = gltf.accessors[positionAccessorIndex];
+					vertices.resize(vertices.size() + posAccessor.count);
+
+					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
+																  [&](const glm::vec3 v, const size_t index)
+																  {
+																	  Vertex newVertex{};
+																	  newVertex.position			  = v;
+																	  newVertex.normal				  = {1, 0, 0};
+																	  newVertex.color				  = glm::vec4{1.f};
+																	  newVertex.uv_x				  = 0;
+																	  newVertex.uv_y				  = 0;
+																	  vertices[initialVertex + index] = newVertex;
+																  });
+				}
+				else
+				{
+					LOG(WARN, "No POSITION attribute found for primitive in mesh: ", mesh.name);
+				}
+
+				// Load vertex normals
+				auto normalsAttribute = primitive.findAttribute("NORMAL");
+				if (normalsAttribute != primitive.attributes.end())
+				{
+					auto normalsAccessorIndex = normalsAttribute->accessorIndex;
+					if (normalsAccessorIndex < gltf.accessors.size())
+					{
+						fastgltf::Accessor& normalsAccessor = gltf.accessors[normalsAccessorIndex];
+						fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, normalsAccessor,
+																	  [&](const glm::vec3 v, const size_t index)
+																	  { vertices[initialVertex + index].normal = v; });
+					}
+					else
+					{
+						LOG(ERR, "Invalid normals accessor index for mesh: ", mesh.name);
+					}
+				}
+
+				// Load UVs
+				auto uvAttribute = primitive.findAttribute("TEXCOORD_0");
+				if (uvAttribute != primitive.attributes.end())
+				{
+					auto uvAccessorIndex = uvAttribute->accessorIndex;
+					if (uvAccessorIndex < gltf.accessors.size())
+					{
+						fastgltf::Accessor& uvAccessor = gltf.accessors[uvAccessorIndex];
+						fastgltf::iterateAccessorWithIndex<glm::vec2>( gltf, uvAccessor,
+							[&](const glm::vec2 v, const size_t index)
+							{
+								vertices[initialVertex + index].uv_x = v.x;
+								vertices[initialVertex + index].uv_y = v.y;
+							});
+					}
+					else
+					{
+						LOG(ERR, "Invalid UV accessor index for mesh: ", mesh.name);
+					}
+				}
+
+				// Load vertex colors
+				auto colorsAttribute = primitive.findAttribute("COLOR_0");
+				if (colorsAttribute != primitive.attributes.end())
+				{
+					auto colorsAccessorIndex = colorsAttribute->accessorIndex;
+					if (colorsAccessorIndex < gltf.accessors.size())
+					{
+						fastgltf::Accessor& colorsAccessor = gltf.accessors[colorsAccessorIndex];
+						fastgltf::iterateAccessorWithIndex<glm::vec4>(
+							gltf, colorsAccessor,
+							[&](const glm::vec4 v, const size_t index)
+							{
+								vertices[initialVertex + index].color = v;
+							});
+					}
+					else
+					{
+						LOG(ERR, "Invalid colors accessor index for mesh: ", mesh.name);
+					}
+				}
 
 				newMesh.surfaces.push_back(newSurface);
 			}
 
 			constexpr bool OverrideColors = true;
-			if (OverrideColors) {
-				for (Vertex& vtx : vertices) {
+			if (OverrideColors)
+			{
+				for (Vertex& vtx : vertices)
+				{
 					vtx.color = glm::vec4(vtx.normal, 1.f);
 				}
 			}
@@ -111,32 +204,7 @@ namespace GraphicsAPI::Vulkan
 			meshes.emplace_back(std::make_shared<MeshAsset>(std::move(newMesh)));
 		}
 
+
 		return meshes;
-	}
-
-	void VkLoader::loadIndices(const fastgltf::Accessor& indexAccessor, std::vector<u32>& indices, const std::vector<Vertex>& vertices, const fastgltf::Asset& gltf) {
-		indices.reserve(indices.size() + indexAccessor.count);
-		fastgltf::iterateAccessor<u32>(gltf, indexAccessor, [&](u32 idx) {
-			indices.push_back(idx + vertices.size());
-		});
-	}
-
-	void VkLoader::loadVertices(const fastgltf::Accessor& posAccessor, std::vector<Vertex>& vertices, const fastgltf::Asset& gltf) {
-		vertices.resize(vertices.size() + posAccessor.count);
-		fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor, [&](glm::vec3 v, size_t index) {
-			Vertex newvtx{};
-			newvtx.position = v;
-			newvtx.normal = {1, 0, 0};
-			newvtx.color = glm::vec4{1.f};
-			newvtx.uv_x = 0;
-			newvtx.uv_y = 0;
-			vertices[vertices.size() - posAccessor.count + index] = newvtx;
-		});
-	}
-
-	void VkLoader::loadAttribute(const fastgltf::Primitive& primitive, const std::string& attributeName, const fastgltf::Asset& gltf, const std::function<void(const fastgltf::Accessor&)>& accessorFunc) {
-		if (auto attr = primitive.findAttribute(attributeName); attr != primitive.attributes.end()) {
-			accessorFunc(gltf.accessors[attr->accessorIndex]);
-		}
 	}
 }

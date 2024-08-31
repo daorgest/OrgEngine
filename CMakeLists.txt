@@ -32,12 +32,17 @@ add_executable(OrgEngine ${SOURCE_FILES})
 # Find Vulkan package
 find_package(Vulkan REQUIRED)
 
+option ( TRACY_ENABLE "" ON )
+option ( TRACY_ON_DEMAND "" ON )
+
 # Include third-party libraries
+add_subdirectory(libs/3rdParty/tracy)
 add_subdirectory(libs/3rdParty/fmt)
 add_subdirectory(libs/3rdParty/glm)
 add_subdirectory(libs/3rdParty/vk-bootstrap)
 add_subdirectory(libs/3rdParty/vma)
 add_subdirectory(libs/3rdParty/fastgltf)
+add_subdirectory(libs/3rdParty/fmod)
 
 # ImGui integration
 set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/3rdParty/imgui")
@@ -63,13 +68,15 @@ target_sources(OrgEngine PRIVATE ${IMGUI_SOURCES})
 
 # Link libraries
 target_link_libraries(OrgEngine PRIVATE
-        xinput.lib
+        xinput
+        Tracy::TracyClient
         Vulkan::Vulkan
         fmt::fmt
         vk-bootstrap::vk-bootstrap
         GPUOpen::VulkanMemoryAllocator
         glm::glm-header-only
         fastgltf
+        fmod
 )
 
 # Compile definitions based on the configuration
@@ -90,17 +97,14 @@ function(add_shaders TARGET SHADER_DIR)
     get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)
     set(SHADER_OUTPUT "${CMAKE_BINARY_DIR}/App/shaders/${SHADER_NAME}.spv")
 
-    if(NOT SHADER_OUTPUT IN_LIST SHADER_OUTPUTS)
-      add_custom_command(
-              OUTPUT ${SHADER_OUTPUT}
-              COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/App/shaders"
-              COMMAND glslc ${SHADER_FILE} -o ${SHADER_OUTPUT}
-              DEPENDS ${SHADER_FILE}
-              COMMENT "Compiling ${SHADER_NAME} to ${SHADER_OUTPUT}"
-      )
-      list(APPEND SHADER_OUTPUTS ${SHADER_OUTPUT})
-      list(APPEND SHADER_OUTPUTS ${SHADER_OUTPUT})
-    endif()
+    add_custom_command(
+            OUTPUT ${SHADER_OUTPUT}
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/App/shaders"
+            COMMAND glslc ${SHADER_FILE} -o ${SHADER_OUTPUT}
+            DEPENDS ${SHADER_FILE}
+            COMMENT "Compiling ${SHADER_NAME} to ${SHADER_OUTPUT}"
+    )
+    list(APPEND SHADER_OUTPUTS ${SHADER_OUTPUT})
   endforeach()
 
   add_custom_target(${TARGET}_Shaders ALL DEPENDS ${SHADER_OUTPUTS})
@@ -109,6 +113,35 @@ endfunction()
 
 # Add shader compilation for shaders in 'src/Shaders' directory
 add_shaders(OrgEngine "${CMAKE_CURRENT_SOURCE_DIR}/src/Shaders")
+
+# Function to copy necessary runtime libraries and create an empty Audio folder
+function(copy_dlls_and_create_audio_folder TARGET)
+  if(WIN32)
+    set(DLL_LIST
+            "${CMAKE_CURRENT_SOURCE_DIR}/libs/3rdParty/fmod/win/core/lib/x64/fmod.dll"
+    )
+    foreach(DLL_PATH IN LISTS DLL_LIST)
+      get_filename_component(DLL_NAME ${DLL_PATH} NAME)
+      add_custom_command(
+              TARGET ${TARGET} POST_BUILD
+              COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              ${DLL_PATH}
+              $<TARGET_FILE_DIR:${TARGET}>
+              COMMENT "Copying ${DLL_NAME} to application directory"
+      )
+    endforeach()
+
+    # Create an empty Audio folder in the App directory
+    add_custom_command(
+            TARGET ${TARGET} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${TARGET}>/Audio"
+            COMMENT "Creating Audio folder in application directory"
+    )
+  endif()
+endfunction()
+
+# Use the function for the OrgEngine executable
+copy_dlls_and_create_audio_folder(OrgEngine)
 
 # Function to copy assets
 function(copy_assets TARGET ASSET_DIR OUTPUT_DIR)
@@ -132,13 +165,13 @@ set_target_properties(OrgEngine PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/App"
         RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/App"
 )
-
-# Packaging for Release configuration
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-  include(InstallRequiredSystemLibraries)
-  set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
-  set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
-  set(CPACK_GENERATOR "TGZ")
-  set(CPACK_SOURCE_GENERATOR "TGZ")
-  include(CPack)
-endif()
+#
+## Packaging for Release configuration
+#if(CMAKE_BUILD_TYPE STREQUAL "Release")
+#  include(InstallRequiredSystemLibraries)
+#  set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+#  set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+#  set(CPACK_GENERATOR "TGZ")
+#  set(CPACK_SOURCE_GENERATOR "TGZ")
+#  include(CPack)
+#endif()
