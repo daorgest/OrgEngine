@@ -17,6 +17,7 @@ namespace GraphicsAPI
 
 	protected:
 		[[nodiscard]] std::vector<u32> ReadFile(const std::filesystem::path &filePath) const;
+		bool						   ReadFileText(const std::filesystem::path &filePath, std::string &outFile);
 	};
 
 } // namespace GraphicsAPI

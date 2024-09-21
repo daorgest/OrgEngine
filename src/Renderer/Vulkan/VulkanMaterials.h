@@ -30,48 +30,57 @@ namespace GraphicsAPI::Vulkan
 
 	struct MaterialInstance
 	{
-		MaterialPipeline* pipeline;
-		VkDescriptorSet materialSet;
-		MaterialPass passType;
+		MaterialPipeline* pipeline{ nullptr };   // Pointer to the associated pipeline
+		VkDescriptorSet materialSet{ VK_NULL_HANDLE };   // Descriptor set for the material
+		MaterialPass passType;   // The type of material pass (MainColor, Transparent, etc.)
 	};
 
+	// GLTFMaterial class handling the metallic-roughness material model
 	class GLTFMetallicRoughness : public VkLoader
 	{
 	public:
+		GLTFMetallicRoughness() = default;
+
+		// Holds pipelines for opaque and transparent materials
 		MaterialPipeline opaquePipeline{};
 		MaterialPipeline transparentPipeline{};
 
-		VkDescriptorSetLayout materialLayout{};
+		VkDescriptorSetLayout materialLayout{ VK_NULL_HANDLE };  // Descriptor set layout for material resources
 
+		// Constants used in the material (uniform buffer)
 		struct MaterialConstants
 		{
-			glm::vec4 colorFactors;
-			glm::vec4 metalRoughnessFactors;
-			// padding, we need it anyway for uniform buffers
-			SafeArray<glm::vec4, 14> extra;
+			glm::vec4 colorFactors{};
+			glm::vec4 metalRoughnessFactors{};
+			SafeArray<glm::vec4, 14> extra{};   // Extra padding for the uniform buffer
 		};
 
+		// Resources used by the material (images, samplers, and buffer)
 		struct MaterialResources
 		{
-			AllocatedImage colorImage;
-			VkSampler colorSampler;
-			AllocatedImage metalRoughImage;
-			VkSampler metalRoughSampler;
-			VkBuffer dataBuffer;
-			u32 dataBufferOffset;
+			AllocatedImage colorImage{};
+			VkSampler colorSampler{ VK_NULL_HANDLE };
+			AllocatedImage metalRoughImage{};
+			VkSampler metalRoughSampler{ VK_NULL_HANDLE };
+			VkBuffer dataBuffer{ VK_NULL_HANDLE };
+			u32 dataBufferOffset{ 0 };
 		};
 
-		VkDescriptorWriter writer;
+		// Writer for updating descriptor sets
+		VkDescriptorWriter writer{};
 
+		// Builds the graphics pipelines for opaque and transparent materials
 		void BuildPipelines(VkEngine* engine, VkDevice device);
+
+		// Clears any Vulkan resources associated with the material
 		void ClearResources(VkDevice device);
 
-		MaterialInstance WriteMaterial
-		(
-			VkDevice device,
-			MaterialPass pass,
-			const MaterialResources& resources,
-			DescriptorAllocatorGrowable& descriptorAllocator
+		// Writes material data to a descriptor set and returns a MaterialInstance
+		MaterialInstance WriteMaterial(
+		    VkDevice device,
+		    MaterialPass pass,
+		    const MaterialResources& resources,
+		    VkDescriptor& descriptorAllocator
 		);
 	};
 }

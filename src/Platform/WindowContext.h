@@ -5,18 +5,21 @@
 #pragma once
 
 #include <Windows.h>
-// #ifdef _DEBUG
-// 	#define TRACY_ENABLE
-// #endif
-
 #include "../Core/Logger.h"
 #include "../Core/PrimTypes.h"
 
-// Context (current status) (PLEASE USE INHERITANCE, THIS IS THE WINDOW STATE)
+// Context (current status)
 namespace Platform
 {
 	struct WindowContext
 	{
+#ifdef _DEBUG
+		const char* appName = "OrgEngine - Debug";
+#else
+		const char* appName = "OrgEngine - Release";
+#endif
+
+#if defined(VULKAN_BUILD) && defined(_WIN32)
 		HWND							hwnd{};
 		HINSTANCE						hInstance{};
 		u32	screenWidth =				GetSystemMetrics(SM_CXSCREEN);
@@ -27,14 +30,14 @@ namespace Platform
 		bool isFullscreen =				false;
 		bool needsSwapchainRecreation =	false;
 
-		void GetWindowSize(u32 &width, u32 &height) const
+		void GetWindowSize(u32& width, u32& height) const
 		{
 			if (hwnd)
 			{
 				RECT rect;
 				if (GetClientRect(hwnd, &rect))
 				{
-					width  = static_cast<u32>(rect.right - rect.left);
+					width = static_cast<u32>(rect.right - rect.left);
 					height = static_cast<u32>(rect.bottom - rect.top);
 				}
 			}
@@ -62,5 +65,6 @@ namespace Platform
 			needsSwapchainRecreation = true;
 			LOG(INFO, "Toggled fullscreen mode. New dimensions: ", screenWidth, "x", screenHeight);
 		}
+#endif
 	};
 }  // namespace Platform

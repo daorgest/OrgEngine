@@ -8,7 +8,6 @@
 #include <fastgltf/core.hpp>
 #include <fastgltf/glm_element_traits.hpp>
 
-
 namespace GraphicsAPI::Vulkan
 {
 
@@ -44,25 +43,28 @@ namespace GraphicsAPI::Vulkan
 	std::optional<std::vector<std::shared_ptr<MeshAsset>>> VkLoader::LoadGltfMeshes(VkEngine* engine,
                                                                                const std::filesystem::path& filePath)
 	{
-		LOG(INFO, "Loading GLTF model: ", filePath);
+		LOG(INFO, "Loading GLTF model: ", filePath.string());
 
 		auto gltfFile = fastgltf::GltfDataBuffer::FromPath(filePath);
 		if (!gltfFile)
 		{
-			LOG(ERR, "Failed to load GLTF file: ", filePath);
+			LOG(ERR, "Failed to load GLTF file at path: ", filePath.string());
 			return std::nullopt;
 		}
 
 		constexpr auto gltfOptions = fastgltf::Options::LoadExternalBuffers;
 
 		fastgltf::Parser parser{};
+
 		auto loadResult = parser.loadGltfBinary(gltfFile.get(), filePath.parent_path(), gltfOptions);
 		if (!loadResult)
 		{
-			LOG(ERR, "Failed to parse GLTF: {} \n", fastgltf::to_underlying(loadResult.error()));
+			LOG(ERR, "Failed to parse GLTF at path: ", filePath.string(), " Error code: ", fastgltf::to_underlying(loadResult.error()));
 			return std::nullopt;
 		}
 
+		// Successfully loaded
+		LOG(INFO, "Successfully loaded GLTF model: ", filePath.string());
 		fastgltf::Asset gltf = std::move(loadResult.get());
 		std::vector<std::shared_ptr<MeshAsset>> meshes;
 		std::vector<u32> indices;

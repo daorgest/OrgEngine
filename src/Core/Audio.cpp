@@ -35,7 +35,6 @@ void Audio::LoadSound(const std::filesystem::path& filePath)
 {
     if (!exists(filePath))
     {
-    	return;
         throw std::runtime_error("File not found: " + filePath.string());
     }
 

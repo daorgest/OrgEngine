@@ -11,7 +11,7 @@
 class Timer
 {
 public:
-	explicit Timer(std::string  functionName)
+	explicit Timer(std::string functionName)
 		: m_FunctionName(std::move(functionName))
 	{
 		Reset();

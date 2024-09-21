@@ -6,37 +6,47 @@
 #define APPLICATION_H
 
 
-
-#include "../Platform/PlatformWindows.h"
-#include "../Core/InputHandler.h"
 #include "../Core/Audio.h"
+#include "../Core/InputHandler.h"
+#include "../Platform/PlatformWindows.h"
+#ifdef USE_OPENGL
+#include "../Renderer/OpenGL/OpenGLMain.h"
+#endif
+
 #include "../Renderer/Vulkan/VulkanMain.h"
 
 class Application
 {
 public:
 	Application();
-
 	~Application() = default;
 
 	void Run();
 	static void HandleInput(Input& input);
-	void		LoadAudio();
-	void		PlaySoundIfNeeded();
+	void LoadAudio();
+	void PlaySoundIfNeeded();
 	void HandleMessages();
 	void Update();
 	void Render();
 
 private:
 	Platform::WindowContext		  windowContext_;
+#ifdef VULKAN_BUILD
 	Platform::Win32				  win32_;
+#endif
 	Audio						  audio_;
-	FMOD::Sound*				  sound{};
-	GraphicsAPI::Vulkan::VkEngine engine_;
+	FMOD::Sound*				  sound{nullptr};
 
-	bool shouldQuit;
-	bool stopRendering_;
-	bool resizeRequested;
+#ifdef VULKAN_BUILD
+	GraphicsAPI::Vulkan::VkEngine vkEngine_;
+#elif defined(OPENGL_BUILD)
+	GraphicsAPI::OpenGL::OpenGLMain glEngine_;
+#endif
+
+	bool shouldQuit{false};
+	bool stopRendering_{false};
+	bool resizeRequested{false};
+	bool initialized_ {false};
 };
 
 

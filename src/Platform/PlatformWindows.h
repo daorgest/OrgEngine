@@ -3,7 +3,7 @@
 //
 
 #pragma once
-
+#ifdef VULKAN_BUILD
 #include "../Core/init.h"
 #include "WindowContext.h"
 
@@ -27,3 +27,4 @@ namespace Platform
         WindowContext*				   wc_;
     };
 }
+#endif

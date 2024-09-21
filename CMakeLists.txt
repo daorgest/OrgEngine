@@ -5,133 +5,220 @@ project(OrgEngine VERSION 0.1)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Options for different renderers
-option(USE_DIRECTX11 "Use DirectX 11 Renderer" FALSE)
-option(USE_VULKAN "Use Vulkan Renderer" TRUE)
+# Renderer selection options (only one should be TRUE)
+option(USE_DIRECTX11 "Use DirectX 11 Renderer" OFF)
+option(USE_VULKAN "Use Vulkan Renderer" ON)
+option(USE_OPENGL "Use OpenGL Renderer" OFF)
 
-# Definitions for Vulkan build and Windows platform
-add_definitions(-DVULKAN_BUILD -DUNICODE -D_UNICODE -DNOMINMAX)
-add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
+# Ensure only one renderer is enabled
+if((USE_VULKAN AND USE_DIRECTX11) OR (USE_VULKAN AND USE_OPENGL) OR (USE_DIRECTX11 AND USE_OPENGL))
+  message(FATAL_ERROR "Only one renderer can be enabled at a time. Please disable other renderers.")
+elseif(NOT (USE_VULKAN OR USE_DIRECTX11 OR USE_OPENGL))
+  message(FATAL_ERROR "At least one renderer must be enabled.")
+endif()
+
+# Define executable
+add_executable(OrgEngine)
+
+# Platform and renderer-specific definitions
+target_compile_definitions(OrgEngine PRIVATE UNICODE _UNICODE NOMINMAX)
+
+if(USE_VULKAN)
+  target_compile_definitions(OrgEngine PRIVATE VULKAN_BUILD VK_USE_PLATFORM_WIN32_KHR)
+elseif(USE_DIRECTX11)
+  target_compile_definitions(OrgEngine PRIVATE DIRECTX11_BUILD)
+elseif(USE_OPENGL)
+  target_compile_definitions(OrgEngine PRIVATE OPENGL_BUILD)
+endif()
 
 # MSVC-specific configurations
 if(MSVC)
-  # Release Flags
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /DNDEBUG /Ot /GT /LTCG /arch:AVX2")
-
+  # Release flags
+  target_compile_options(OrgEngine PRIVATE
+          $<$<CONFIG:Release>:/O2 /DNDEBUG /Ot /GT /GL /arch:AVX2>
+  )
   # Debug flags
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Od /DEBUG")
-  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<CONFIG:Debug>,EditAndContinue,ProgramDatabase>")
+  target_compile_options(OrgEngine PRIVATE
+          $<$<CONFIG:Debug>:/Od /DEBUG /Zi>
+  )
+  # Enable multi-processor compilation
+  target_compile_options(OrgEngine PRIVATE /MP)
 endif()
 
-# Source files globbing
-file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
+# Include directories
+target_include_directories(OrgEngine PRIVATE
+        "${CMAKE_SOURCE_DIR}/src"
+        "${CMAKE_SOURCE_DIR}/libs/3rdParty"
+)
 
-# Add executable
-add_executable(OrgEngine ${SOURCE_FILES})
+# Source files
+file(GLOB_RECURSE SOURCE_FILES
+        "${CMAKE_SOURCE_DIR}/src/Platform/*.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Game/*.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Core/*.cpp"
+        "${CMAKE_SOURCE_DIR}/src/Renderer/ResourceLoader.cpp"
+)
+target_sources(OrgEngine PRIVATE ${SOURCE_FILES})
 
-# Find Vulkan package
-find_package(Vulkan REQUIRED)
+# Add renderer-specific source files
+if(USE_VULKAN)
+  file(GLOB_RECURSE VULKAN_SOURCES "${CMAKE_SOURCE_DIR}/src/Renderer/Vulkan/*.cpp")
+  target_sources(OrgEngine PRIVATE ${VULKAN_SOURCES})
+elseif(USE_OPENGL)
+  target_sources(OrgEngine PRIVATE
+          "${CMAKE_SOURCE_DIR}/src/Renderer/OpenGL/OpenGLMain.cpp"
+  )
+endif()
 
-option ( TRACY_ENABLE "" ON )
-option ( TRACY_ON_DEMAND "" ON )
+# Organize source files into filters/groups for IDEs
+function(assign_source_groups)
+  foreach(SOURCE IN LISTS ARGN)
+    get_filename_component(SOURCE_PATH "${SOURCE}" PATH)
+    file(RELATIVE_PATH SOURCE_PATH_REL "${CMAKE_SOURCE_DIR}" "${SOURCE_PATH}")
+    string(REPLACE "/" "\\" GROUP_PATH "${SOURCE_PATH_REL}")
+    source_group("${GROUP_PATH}" FILES "${SOURCE}")
+  endforeach()
+endfunction()
+
+assign_source_groups(${SOURCE_FILES})
+if(USE_VULKAN)
+  assign_source_groups(${VULKAN_SOURCES})
+endif()
+
+# Find and link Vulkan if enabled
+if(USE_VULKAN)
+  find_package(Vulkan REQUIRED)
+  target_include_directories(OrgEngine PRIVATE ${Vulkan_INCLUDE_DIRS})
+  target_link_libraries(OrgEngine PRIVATE Vulkan::Vulkan)
+endif()
+
+# Tracy options
+option(TRACY_ENABLE "Enable Tracy Profiler" ON)
+option(TRACY_ON_DEMAND "Enable Tracy On-Demand Mode" ON)
+
+if(CMAKE_BUILD_TYPE MATCHES Debug)
+  add_definitions(-DTRACY_ENABLE)
+endif()
 
 # Include third-party libraries
 add_subdirectory(libs/3rdParty/tracy)
 add_subdirectory(libs/3rdParty/fmt)
 add_subdirectory(libs/3rdParty/glm)
-add_subdirectory(libs/3rdParty/vk-bootstrap)
-add_subdirectory(libs/3rdParty/vma)
 add_subdirectory(libs/3rdParty/fastgltf)
 add_subdirectory(libs/3rdParty/fmod)
 
 # ImGui integration
-set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/3rdParty/imgui")
-file(GLOB IMGUI_SOURCES
+set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/libs/3rdParty/imgui")
+set(IMGUI_SOURCES
         "${IMGUI_DIR}/imgui.cpp"
         "${IMGUI_DIR}/imgui_draw.cpp"
         "${IMGUI_DIR}/imgui_demo.cpp"
         "${IMGUI_DIR}/imgui_tables.cpp"
         "${IMGUI_DIR}/imgui_widgets.cpp"
         "${IMGUI_DIR}/backends/imgui_impl_win32.cpp"
-        "${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp"
 )
 
-# Include directories
-target_include_directories(OrgEngine PRIVATE
-        ${Vulkan_INCLUDE_DIRS}
-        "${CMAKE_SOURCE_DIR}/libs/3rdParty/vma/"
-        "${IMGUI_DIR}"
-)
+# Add ImGui backend based on the renderer
+if(USE_VULKAN)
+  list(APPEND IMGUI_SOURCES "${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp")
+elseif(USE_OPENGL)
+  list(APPEND IMGUI_SOURCES "${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp")
+endif()
 
-# Add ImGui sources to the executable
+# Include ImGui directories and sources
+target_include_directories(OrgEngine PRIVATE "${IMGUI_DIR}")
 target_sources(OrgEngine PRIVATE ${IMGUI_SOURCES})
+assign_source_groups(${IMGUI_SOURCES})
 
-# Link libraries
+# Vulkan configuration
+if(USE_VULKAN)
+  # Add Vulkan-related libraries
+  add_subdirectory(libs/3rdParty/vk-bootstrap)
+  add_subdirectory(libs/3rdParty/vma)
+  target_include_directories(OrgEngine PRIVATE
+          "${CMAKE_SOURCE_DIR}/libs/3rdParty/vma/"
+  )
+  target_link_libraries(OrgEngine PRIVATE
+          vk-bootstrap::vk-bootstrap
+          GPUOpen::VulkanMemoryAllocator
+  )
+endif()
+
+# OpenGL configuration
+if(USE_OPENGL)
+  # Add SDL3
+  add_subdirectory(libs/3rdParty/sdl3 EXCLUDE_FROM_ALL)
+  # Find and add GLAD sources
+  file(GLOB GLAD_SOURCES "${CMAKE_SOURCE_DIR}/libs/3rdParty/glad/src/glad.c")
+  target_sources(OrgEngine PRIVATE ${GLAD_SOURCES})
+  assign_source_groups(${GLAD_SOURCES})
+  # Include directories for GLAD
+  target_include_directories(OrgEngine PRIVATE
+          "${CMAKE_SOURCE_DIR}/libs/3rdParty/glad/include"
+  )
+  # Link OpenGL and SDL libraries
+  target_link_libraries(OrgEngine PRIVATE opengl32 SDL3::SDL3)
+endif()
+
+# Link additional libraries
 target_link_libraries(OrgEngine PRIVATE
         xinput
         Tracy::TracyClient
-        Vulkan::Vulkan
         fmt::fmt
-        vk-bootstrap::vk-bootstrap
-        GPUOpen::VulkanMemoryAllocator
         glm::glm-header-only
         fastgltf
         fmod
 )
 
-# Compile definitions based on the configuration
+# Compile definitions for Debug configuration
 target_compile_definitions(OrgEngine PRIVATE
         $<$<CONFIG:Debug>:DEBUG>
 )
 
-# Function to compile GLSL shaders
+# Function to add shaders
 function(add_shaders TARGET SHADER_DIR)
   file(GLOB_RECURSE SHADER_FILES
           "${SHADER_DIR}/*.comp"
           "${SHADER_DIR}/*.frag"
           "${SHADER_DIR}/*.vert"
   )
-
-  set(SHADER_OUTPUTS "")
-  foreach(SHADER_FILE ${SHADER_FILES})
+  set(SHADER_OUTPUTS)
+  foreach(SHADER_FILE IN LISTS SHADER_FILES)
     get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)
-    set(SHADER_OUTPUT "${CMAKE_BINARY_DIR}/App/shaders/${SHADER_NAME}.spv")
-
+    set(SHADER_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/App/Shaders/${SHADER_NAME}.spv")
+    list(APPEND SHADER_OUTPUTS ${SHADER_OUTPUT})
     add_custom_command(
             OUTPUT ${SHADER_OUTPUT}
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/App/shaders"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/App/Shaders"
             COMMAND glslc ${SHADER_FILE} -o ${SHADER_OUTPUT}
             DEPENDS ${SHADER_FILE}
             COMMENT "Compiling ${SHADER_NAME} to ${SHADER_OUTPUT}"
     )
-    list(APPEND SHADER_OUTPUTS ${SHADER_OUTPUT})
   endforeach()
-
   add_custom_target(${TARGET}_Shaders ALL DEPENDS ${SHADER_OUTPUTS})
   add_dependencies(${TARGET} ${TARGET}_Shaders)
+  # Assign shaders to source groups
+  assign_source_groups(${SHADER_FILES})
 endfunction()
+add_shaders(OrgEngine "${CMAKE_SOURCE_DIR}/src/Shaders")
 
-# Add shader compilation for shaders in 'src/Shaders' directory
-add_shaders(OrgEngine "${CMAKE_CURRENT_SOURCE_DIR}/src/Shaders")
-
-# Function to copy necessary runtime libraries and create an empty Audio folder
+# Function to copy DLLs and create Audio folder
 function(copy_dlls_and_create_audio_folder TARGET)
   if(WIN32)
     set(DLL_LIST
-            "${CMAKE_CURRENT_SOURCE_DIR}/libs/3rdParty/fmod/win/core/lib/x64/fmod.dll"
+            "${CMAKE_SOURCE_DIR}/libs/3rdParty/fmod/win/core/lib/x64/fmod.dll"
     )
     foreach(DLL_PATH IN LISTS DLL_LIST)
       get_filename_component(DLL_NAME ${DLL_PATH} NAME)
       add_custom_command(
               TARGET ${TARGET} POST_BUILD
               COMMAND ${CMAKE_COMMAND} -E copy_if_different
-              ${DLL_PATH}
-              $<TARGET_FILE_DIR:${TARGET}>
+              "${DLL_PATH}"
+              "$<TARGET_FILE_DIR:${TARGET}>"
               COMMENT "Copying ${DLL_NAME} to application directory"
       )
     endforeach()
-
-    # Create an empty Audio folder in the App directory
+    # Create Audio folder
     add_custom_command(
             TARGET ${TARGET} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${TARGET}>/Audio"
@@ -139,14 +226,11 @@ function(copy_dlls_and_create_audio_folder TARGET)
     )
   endif()
 endfunction()
-
-# Use the function for the OrgEngine executable
 copy_dlls_and_create_audio_folder(OrgEngine)
 
 # Function to copy assets
 function(copy_assets TARGET ASSET_DIR OUTPUT_DIR)
   file(GLOB_RECURSE ASSET_FILES "${ASSET_DIR}/*")
-
   add_custom_command(
           TARGET ${TARGET}
           PRE_BUILD
@@ -154,24 +238,29 @@ function(copy_assets TARGET ASSET_DIR OUTPUT_DIR)
           COMMAND ${CMAKE_COMMAND} -E copy_directory "${ASSET_DIR}" "${OUTPUT_DIR}"
           COMMENT "Copying assets from ${ASSET_DIR} to ${OUTPUT_DIR}"
   )
+  # Assign assets to source groups (optional)
+  assign_source_groups(${ASSET_FILES})
 endfunction()
+# Copy Models to App/Models
+copy_assets(OrgEngine "${CMAKE_SOURCE_DIR}/src/Assets/Models" "${CMAKE_CURRENT_BINARY_DIR}/App/Models")
 
-# Copy assets to the output directory
-copy_assets(OrgEngine "${CMAKE_CURRENT_SOURCE_DIR}/src/Assets" "${CMAKE_BINARY_DIR}/App/assets")
-
-# Set the output directories for the executable
-set_target_properties(OrgEngine PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/App"
-        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/App"
-        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/App"
+# Create an empty Textures folder in the App directory
+add_custom_command(
+        TARGET OrgEngine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/App/Textures"
+        COMMENT "Creating empty Textures folder in application directory"
 )
-#
-## Packaging for Release configuration
-#if(CMAKE_BUILD_TYPE STREQUAL "Release")
-#  include(InstallRequiredSystemLibraries)
-#  set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
-#  set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
-#  set(CPACK_GENERATOR "TGZ")
-#  set(CPACK_SOURCE_GENERATOR "TGZ")
-#  include(CPack)
-#endif()
+
+# Set output directories for executable
+set_target_properties(OrgEngine PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/App"
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/App"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}/App"
+)
+
+# Set Visual Studio working directory
+if(MSVC)
+  set_target_properties(OrgEngine PROPERTIES
+          VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/App"
+  )
+endif()

@@ -6,16 +6,46 @@
 
 
 Application::Application() :
-	win32_(&windowContext_), engine_(&windowContext_), shouldQuit(false), stopRendering_(false), resizeRequested(false)
+#ifdef VULKAN_BUILD
+	win32_(&windowContext_),
+	vkEngine_(&windowContext_)
+#elif defined(OPENGL_BUILD)
+	glEngine_(&windowContext_)
+#endif
 {
-	LoadAudio();
-	audio_.StartBackgroundPlayback(sound);
+	if (initialized_)
+	{
+		LoadAudio();
+		audio_.StartBackgroundPlayback(sound);
+	}
 }
+
+// bool Application::InitializeEngine()
+// {
+// #elif defined(OPENGL_BUILD)
+// 	if (!glEngine_.Init())
+// 	{
+// 		LOG(ERR, "Failed to initialize OpenGL engine.");
+// 		return false;
+// 	}
+// #endif
+// 	return true;
+// }
 
 
 void Application::Run()
 {
-	engine_.Run();
+	// if (!initialized_)
+	// {
+	// 	LOG(ERR, "Engine not initialized. Exiting...");
+	// 	return;
+	// }
+
+#ifdef VULKAN_BUILD
+	vkEngine_.Run();
+#elif defined(OPENGL_BUILD)
+	glEngine_.RenderLoop();
+#endif
 }
 
 void Application::HandleInput(Input& input)
@@ -69,60 +99,21 @@ void Application::PlaySoundIfNeeded()
 	}
 }
 
+// void Application::Update()
+// {
+// 	// Start ImGui new frame
+// 	ImGui_ImplVulkan_NewFrame();
+// 	ImGui_ImplWin32_NewFrame();
+// 	ImGui::NewFrame();
+// 	ImGui::ShowDemoWindow();
+//
+// 	// Render ImGui components
+// 	vkEngine_.RenderUI();
+// 	ImGui::Render();
+// }
 
-void Application::HandleMessages()
-{
-	MSG msg = {};
-	while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
-	{
-		if (msg.message == WM_QUIT)
-		{
-			shouldQuit = true;
-			return;
-		}
-
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
-
-		if (msg.message == WM_SYSCOMMAND)
-		{
-			if (msg.wParam == SC_MINIMIZE)
-			{
-				stopRendering_ = true;
-			}
-			else if (msg.wParam == SC_RESTORE)
-			{
-				stopRendering_ = false;
-				resizeRequested = true;
-			}
-		}
-
-		// Handle window size changes
-		if (msg.message == WM_SIZE)
-		{
-			if (msg.wParam != SIZE_MINIMIZED)
-			{
-				resizeRequested = true;
-			}
-		}
-	}
-}
-
-void Application::Update()
-{
-	// Start ImGui new frame
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplWin32_NewFrame();
-	ImGui::NewFrame();
-	ImGui::ShowDemoWindow();
-
-	// Render ImGui components
-	engine_.RenderUI();
-	ImGui::Render();
-}
-
-void Application::Render()
-{
-	// Draw the frame
-	engine_.Draw();
-}
+// void Application::Render()
+// {
+// 	// Draw the frame
+// 	vkEngine_.Draw();
+// }

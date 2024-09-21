@@ -14,6 +14,7 @@ std::vector<u32> ResourceLoader::ReadFile(const std::filesystem::path& filePath)
 	if (!file.is_open()) {
 		throw std::runtime_error("Failed to open file: " + filePath.string());
 	}
+	// if(file_size(filePath))
 
 	size_t fileSize = file.tellg();
 	std::vector<u32> buffer(fileSize / sizeof(u32));
@@ -23,4 +24,23 @@ std::vector<u32> ResourceLoader::ReadFile(const std::filesystem::path& filePath)
 	file.close();
 
 	return buffer;
+}
+
+bool ResourceLoader::ReadFileText(const std::filesystem::path& filePath, std::string& outFile)
+{
+	std::ifstream file(filePath);
+
+	if (file.is_open())
+	{
+		std::string line;
+		while (std::getline(file, line))
+		{
+			outFile.append(line);
+			outFile.append("\n");
+		}
+
+		file.close();
+		return true;
+	}
+	return false;
 }

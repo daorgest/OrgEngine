@@ -66,11 +66,11 @@ namespace GraphicsAPI::Vulkan
 
 	struct FrameData
 	{
-		VkSemaphore swapChainSemaphore_, renderSemaphore_;
-		VkFence renderFence_;
+		VkSemaphore swapChainSemaphore_{}, renderSemaphore_{};
+		VkFence renderFence_{};
 
-		VkCommandPool commandPool_;
-		VkCommandBuffer mainCommandBuffer_;
+		VkCommandPool commandPool_{};
+		VkCommandBuffer mainCommandBuffer_{};
 
 		DeletionQueue deletionQueue_;
 		VkDescriptor frameDescriptors_;
@@ -86,7 +86,7 @@ namespace GraphicsAPI::Vulkan
 		void Cleanup();
 
 		// Initialization
-		void Init();
+		bool Init();
 		void SetupDebugMessenger();
 		void InitVulkan();
 		void InitCommands();
@@ -109,8 +109,6 @@ namespace GraphicsAPI::Vulkan
 		void RenderMainMenu();
 		void RenderMemoryUsageImGui();
 		void RenderQuickStatsImGui();
-		bool IsRenderingStopped() const { return stopRendering_; }
-		bool IsResizeRequested() const { return resizeRequested_; }
 
 		// Utility Functions
 		static VkPipelineShaderStageCreateInfo PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage,
@@ -170,9 +168,9 @@ namespace GraphicsAPI::Vulkan
 		VkDescriptorSetLayout gpuSceneDataDescriptorLayout_{};
 		VkFormat swapchainImageFormat_;
 		AllocatedImage depthImage_{};
+		bool isInit = false;
 
 	private:
-		bool isInit = false;
 		bool stopRendering_ = false;
 		bool resizeRequested_ = false;
 		float renderScale = 1.0f;
@@ -209,11 +207,12 @@ namespace GraphicsAPI::Vulkan
 
 		VkExtent2D drawExtent_{};
 
-		DescriptorAllocatorGrowable globalDescriptorAllocator{};
-
+		// Descriptor-related members
+		VkDescriptor globalDescriptorAllocator{};
 		VkDescriptorSet drawImageDescriptors_{};
 		VkDescriptorSetLayout drawImageDescriptorLayout_{};
 		VkDescriptorSetLayout singleImageDescriptorLayout_{};
+
 		VkPipeline gradientPipeline_{};
 		VkPipelineLayout gradientPipelineLayout_{};
 		GPUSceneData sceneData{};

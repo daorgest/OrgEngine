@@ -2,6 +2,7 @@
 // Created by Orgest on 4/12/2024.
 //
 
+#include <Core/Timer.h>
 #include <backends/imgui_impl_win32.h>
 #ifdef VULKAN_BUILD
 #include "VulkanMain.h"
@@ -252,7 +253,7 @@ void VkEngine::RenderUI()
 
 #pragma region Initialization
 
-void VkEngine::Init()
+bool VkEngine::Init()
 {
 	if (windowContext_)
 	{
@@ -266,79 +267,15 @@ void VkEngine::Init()
 		InitDefaultData();
 		InitImgui();
 		isInit = true;
+		return true;
 	}
-}
-
-void VkEngine::InitImgui()
-{
-	// Create descriptor pool for IMGUI
-	const VkDescriptorPoolSize pool_sizes[] = {
-		{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
-		{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
-		{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
-		{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
-		{VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
-		{VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
-		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
-		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
-		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
-		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
-		{VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}
-	};
-
-	VkDescriptorPoolCreateInfo pool_info = {};
-	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-	pool_info.maxSets = 1000;
-	pool_info.poolSizeCount = static_cast<u32>(std::size(pool_sizes));
-	pool_info.pPoolSizes = pool_sizes;
-
-	VkDescriptorPool imguiPool;
-	VK_CHECK(vkCreateDescriptorPool(vd.device_, &pool_info, nullptr, &imguiPool));
-
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO();
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
-	io.ConfigDebugIsDebuggerPresent = true;
-
-	ImGui_ImplWin32_Init(windowContext_->hwnd);
-
-	ImGui_ImplVulkan_InitInfo init_info
-	{
-		.Instance = vd.instance_,
-		.PhysicalDevice = vd.physicalDevice_,
-		.Device = vd.device_,
-		.Queue = graphicsQueue_,
-		.DescriptorPool = imguiPool,
-		.MinImageCount = 3,
-		.ImageCount = 3,
-		.UseDynamicRendering = true,
-	};
-
-	// dynamic rendering parameters for imgui to use
-	init_info.PipelineRenderingCreateInfo = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
-	init_info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
-	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapchainImageFormat_;
-
-	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-
-	ImGui_ImplVulkan_Init(&init_info);
-
-	ImGui_ImplVulkan_CreateFontsTexture();
-
-	// add the destroy the imgui created structures
-	mainDeletionQueue_.pushFunction([device = vd.device_, pool = imguiPool]
-	{
-		ImGui_ImplVulkan_Shutdown();
-		vkDestroyDescriptorPool(device, pool, nullptr);
-	});
+	return false;
 }
 
 void VkEngine::InitVulkan()
 {
-	LOG(INFO, "Initializing Vulkan");
+	// Timer timer(__FUNCTION__);
+	ZoneScoped;
 
 	vkb::InstanceBuilder builder;
 	auto instRet = builder.set_app_name("OrgEngine")
@@ -417,7 +354,75 @@ void VkEngine::InitVulkan()
 	graphicsQueueFamily_ = devRet.value().get_queue_index(vkb::QueueType::graphics).value();
 
 	InitializeCommandPoolsAndBuffers();
+	TracyVkContext(vd.physicalDevice_, vd.device_, graphicsQueue_, GetCurrentFrame().mainCommandBuffer_);
 	isInit = true;
+}
+
+void VkEngine::InitImgui()
+{
+	// Create descriptor pool for IMGUI
+	const VkDescriptorPoolSize pool_sizes[] = {
+		{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
+		{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
+		{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
+		{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
+		{VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
+		{VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
+		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
+		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
+		{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
+		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
+		{VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}
+	};
+
+	VkDescriptorPoolCreateInfo pool_info = {};
+	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	pool_info.maxSets = 1000;
+	pool_info.poolSizeCount = static_cast<u32>(std::size(pool_sizes));
+	pool_info.pPoolSizes = pool_sizes;
+
+	VkDescriptorPool imguiPool;
+	VK_CHECK(vkCreateDescriptorPool(vd.device_, &pool_info, nullptr, &imguiPool));
+
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
+	io.ConfigDebugIsDebuggerPresent = true;
+
+	ImGui_ImplWin32_Init(windowContext_->hwnd);
+
+	ImGui_ImplVulkan_InitInfo init_info
+	{
+		.Instance = vd.instance_,
+		.PhysicalDevice = vd.physicalDevice_,
+		.Device = vd.device_,
+		.Queue = graphicsQueue_,
+		.DescriptorPool = imguiPool,
+		.MinImageCount = 3,
+		.ImageCount = 3,
+		.UseDynamicRendering = true,
+	};
+
+	// dynamic rendering parameters for imgui to use
+	init_info.PipelineRenderingCreateInfo = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+	init_info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapchainImageFormat_;
+
+	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+	ImGui_ImplVulkan_Init(&init_info);
+
+	ImGui_ImplVulkan_CreateFontsTexture();
+
+	// add the destroy the imgui created structures
+	mainDeletionQueue_.pushFunction([device = vd.device_, pool = imguiPool]
+	{
+		ImGui_ImplVulkan_Shutdown();
+		vkDestroyDescriptorPool(device, pool, nullptr);
+	});
 }
 
 #pragma endregion Initialization
@@ -456,6 +461,7 @@ void VkEngine::Cleanup()
 		vkb::destroy_debug_utils_messenger(vd.instance_, vd.dbgMessenger_);
 		vkDestroyInstance(vd.instance_, nullptr);
 		// TODO: MOVE THIS OVER TO win32's WM_QUIT
+		TracyVkDestroy(tracyContext_);
 		isInit = false;
 	}
 }
@@ -1024,6 +1030,7 @@ void VkEngine::CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage des
 
 void VkEngine::TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout) const
 {
+	ZoneScoped;
 	VkImageMemoryBarrier2 imageBarrier {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
 	imageBarrier.pNext = nullptr;
 
@@ -1375,12 +1382,12 @@ void VkEngine::InitMeshPipeline()
 void VkEngine::InitDescriptors()
 {
 	//create a descriptor pool that will hold 10 sets with 1 image each
-	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes =
+	std::vector<VkDescriptor::PoolSizeRatio> sizes =
 	{
 		{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}
 	};
 
-	globalDescriptorAllocator.InitPool(vd.device_, 10, sizes);
+	globalDescriptorAllocator.Init(vd.device_, 10, sizes);
 
 	//make the descriptor set layout for our compute draw
 	{
@@ -1427,96 +1434,6 @@ void VkEngine::InitDescriptors()
 			frames_[i].frameDescriptors_.DestroyPools(vd.device_);
 		});
 	}
-}
-
-void DescriptorLayoutBuilder::AddBinding(u32 binding, VkDescriptorType type)
-{
-	VkDescriptorSetLayoutBinding newbind
-	{
-		.binding = binding,
-		.descriptorType = type,
-		.descriptorCount = 1
-	};
-
-	bindings.push_back(newbind);
-}
-
-void DescriptorLayoutBuilder::Clear()
-{
-	bindings.clear();
-}
-
-VkDescriptorSetLayout DescriptorLayoutBuilder::Build(VkDevice device, VkShaderStageFlags shaderStages, void* pNext,
-                                                     VkDescriptorSetLayoutCreateFlags flags)
-{
-	for (auto& b : bindings)
-	{
-		b.stageFlags |= shaderStages;
-	}
-
-	VkDescriptorSetLayoutCreateInfo info
-	{
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.pNext = pNext,
-		.flags = flags,
-		.bindingCount = static_cast<u32>(bindings.size()),
-		.pBindings = bindings.data()
-	};
-
-	VkDescriptorSetLayout set;
-	VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &set));
-
-	return set;
-}
-
-
-void DescriptorAllocatorGrowable::InitPool(VkDevice device, u32 maxSets, std::span<PoolSizeRatio> poolRatios)
-{
-	std::vector<VkDescriptorPoolSize> poolSizes;
-	for (const auto& ratio : poolRatios)
-	{
-		poolSizes.push_back(VkDescriptorPoolSize{
-			.type            = ratio.type,
-			.descriptorCount = static_cast<u32>(ratio.ratio * maxSets)
-		});
-	}
-
-
-	VkDescriptorPoolCreateInfo poolInfo
-	{
-		.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.maxSets       = maxSets,
-		.poolSizeCount = static_cast<u32>(poolSizes.size()),
-		.pPoolSizes    = poolSizes.data()
-	};
-
-	vkCreateDescriptorPool(device, &poolInfo, nullptr, &pool);
-}
-
-void DescriptorAllocatorGrowable::ClearDescriptors(VkDevice device) const
-{
-	vkResetDescriptorPool(device, pool, 0);
-}
-
-void DescriptorAllocatorGrowable::DestroyPool(VkDevice device)
-{
-	vkDestroyDescriptorPool(device, pool, nullptr);
-}
-
-VkDescriptorSet DescriptorAllocatorGrowable::Allocate(VkDevice device, VkDescriptorSetLayout layout)
-{
-	VkDescriptorSetAllocateInfo allocInfo
-	{
-		.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-		.descriptorPool     = pool,
-		.descriptorSetCount = 1,
-		.pSetLayouts        = &layout
-	};
-
-	VkDescriptorSet descriptorSet;
-	VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet));
-
-	return descriptorSet;
 }
 
 #pragma endregion Descriptor
@@ -1579,6 +1496,7 @@ VkRenderingAttachmentInfo VkEngine::DepthAttachmentInfo(VkImageView view, VkImag
 
 void VkEngine::DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView)
 {
+	TracyVkZone(tracyContext_, cmd, "Draw imgui")
 	VkRenderingAttachmentInfo colorAttachment = AttachmentInfo(targetImageView, nullptr,
 	                                                           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	VkRenderingInfo renderInfo = RenderInfo(swapchainExtent_, &colorAttachment, nullptr);
@@ -1592,6 +1510,7 @@ void VkEngine::DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView)
 
 void VkEngine::DrawBackground(VkCommandBuffer cmd)
 {
+	TracyVkZone(tracyContext_, cmd, "Draw Background")
 	ComputeEffect& effect = backgroundEffects[currentBackgroundEffect_];
 
 	// Bind the background compute pipeline
@@ -1608,6 +1527,7 @@ void VkEngine::DrawBackground(VkCommandBuffer cmd)
 
 void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 {
+	TracyVkZone(tracyContext_, cmd, "Draw Geometry")
 	// Allocate a new uniform buffer for the scene data
     AllocatedBuffer gpuSceneDataBuffer = CreateBuffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
@@ -1669,9 +1589,11 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 	}
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout_, 0, 1, &imageSet, 0, nullptr);
 
+	float aspectRatio = static_cast<float>(drawExtent_.width) / static_cast<float>(drawExtent_.height > 0 ? drawExtent_.height : 1);
+
 	// Calculate view and projection matrices based on ImGui-controlled parameters
 	glm::mat4 view = glm::translate(glm::mat4(1.0f), cameraPosition);
-	glm::mat4 projection = glm::perspective(glm::radians(fov), static_cast<float>(drawExtent_.width) / static_cast<float>(drawExtent_.height), nearPlane, farPlane);
+	glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
 
     // Invert the Y direction on projection matrix so that we are more similar to OpenGL and glTF axis
     projection[1][1] *= -1;
@@ -1705,20 +1627,21 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 
 void VkEngine::InitDefaultData()
 {
+	ZoneScoped;
     if (meshLoaded_)
     {
 		return;
     }
 
-	const std::filesystem::path meshPath = "assets\\basicmesh.glb";
+	const std::filesystem::path meshPath = "Models\\basicmesh.glb";
 	if (auto loadedMeshes = loader_.LoadGltfMeshes(this, meshPath))
 	{
 		testMeshes = std::move(loadedMeshes.value());
 		meshLoaded_ = true;
-		LOG(INFO, "Mesh loaded successfully");
-	} else
+	}
+	else
 	{
-		LOG(ERR, "Failed to load mesh: ", meshPath);
+		LOG(ERR, "Failed to load mesh: ", meshPath.string());
 	}
 
     // 3 default textures, white, grey, black. 1 pixel each
@@ -1780,7 +1703,10 @@ void VkEngine::InitDefaultData()
 
 	// set the uniform buffer for the material data
 	AllocatedBuffer materialConstants = CreateBuffer(sizeof(GLTFMetallicRoughness::MaterialConstants), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
+	if (materialConstants.buffer == VK_NULL_HANDLE) {
+		LOG(ERR, "Failed to create material constants buffer");
+		return;
+	}
 	// write the buffer
 	void* mappedData = nullptr;
 	// Map the memory for the buffer
@@ -1797,6 +1723,10 @@ void VkEngine::InitDefaultData()
 	{
 		LOG(ERR, "Failed to map memory for material constants");
 	}
+
+	LOG(INFO, "Buffer: ", materialConstants.buffer);
+	LOG(INFO, "Image: ", whiteImage_.image);
+	LOG(INFO, "Sampler: ", defaultSamplerLinear_);
 
 	// Register destruction callbacks in the deletion queue
 	mainDeletionQueue_.pushFunction([=, this]()
@@ -1892,6 +1822,7 @@ void VkEngine::Draw()
     VkSubmitInfo2 submit = SubmitInfo(&cmdinfo, &signalInfo, &waitInfo);
 
     VK_CHECK(vkQueueSubmit2(graphicsQueue_, 1, &submit, GetCurrentFrame().renderFence_));
+	TracyVkCollect(tracyContext_, GetCurrentFrame().mainCommandBuffer_);
 
     VkPresentInfoKHR presentInfo_
     {

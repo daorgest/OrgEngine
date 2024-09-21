@@ -6,6 +6,16 @@
 #include <windows.h>
 #endif
 
+// Platform-specific DebugBreak macros
+#ifdef _WIN32
+    #define DEBUG_BREAK() __debugbreak()
+#elif defined(__APPLE__) || defined(__linux__)
+    #include <csignal>
+    #define DEBUG_BREAK() raise(SIGTRAP)
+#else
+    #define DEBUG_BREAK() ((void)0)  // Do nothing on unsupported platforms
+#endif
+
 enum LogLevel
 {
     INFO,
@@ -86,6 +96,7 @@ namespace Logger
             if (level == ERR)
             {
                 std::cout << fmt::format("[{}{}] {}:{} - {}\n", levelString, "\033[0m", file, line, combinedStream.str());
+                DEBUG_BREAK();  // Trigger DebugBreak for errors
             }
             else
             {
@@ -97,6 +108,7 @@ namespace Logger
             if (level == ERR)
             {
                 std::cout << fmt::format("[{}] [{}{}] {}:{} - {}\n", timestamp, levelString, "\033[0m", file, line, combinedStream.str());
+                DEBUG_BREAK();  // Trigger DebugBreak for errors
             }
             else
             {

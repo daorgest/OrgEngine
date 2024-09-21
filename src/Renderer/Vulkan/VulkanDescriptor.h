@@ -11,79 +11,65 @@
 #include <span>
 #include <vector>
 #include <vulkan/vulkan.h>
-
 #include "../../Core/PrimTypes.h"
 
 namespace GraphicsAPI::Vulkan
 {
+    // Descriptor Layout Builder: Builds descriptor set layouts.
+    struct DescriptorLayoutBuilder
+    {
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
 
-	struct DescriptorLayoutBuilder
-	{
-		std::vector<VkDescriptorSetLayoutBinding> bindings;
+        void AddBinding(u32 binding, VkDescriptorType type);
+        void Clear();
+        VkDescriptorSetLayout Build(VkDevice device, VkShaderStageFlags shaderStages, void *pNext = nullptr, VkDescriptorSetLayoutCreateFlags flags = 0);
+    };
 
-		void AddBinding(u32 binding, VkDescriptorType type);
-		void Clear();
-		VkDescriptorSetLayout Build(VkDevice device, VkShaderStageFlags shaderStages, void *pNext = nullptr,
-									VkDescriptorSetLayoutCreateFlags flags = 0);
-	};
+    // Descriptor Writer: Handles writing descriptor sets.
+    struct VkDescriptorWriter
+    {
+        std::deque<VkDescriptorImageInfo> imageInfos;
+        std::deque<VkDescriptorBufferInfo> bufferInfos;
+        std::vector<VkWriteDescriptorSet> writes;
 
-	struct DescriptorAllocatorGrowable
-	{
-		struct PoolSizeRatio
-		{
-			VkDescriptorType type;
-			float ratio;
-		};
+        void WriteImage(u32 binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type);
+        void WriteBuffer(u32 binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type);
+        void Clear();
+        void UpdateSet(VkDevice device, VkDescriptorSet set);
+    };
 
-		VkDescriptorPool pool;
+    // VkDescriptor: Manages descriptor pools and allocation.
+    class VkDescriptor
+    {
+    public:
+        struct PoolSizeRatio
+        {
+            VkDescriptorType type;
+            float ratio;
+        };
 
-		void InitPool(VkDevice device, u32 maxSets, std::span<PoolSizeRatio> poolRatios);
-		void ClearDescriptors(VkDevice device) const;
-		void DestroyPool(VkDevice device);
+        // Initialize a descriptor pool with the specified pool size ratios.
+        void Init(VkDevice device, u32 initialSets, std::span<PoolSizeRatio> poolRatios);
 
-		VkDescriptorSet Allocate(VkDevice device, VkDescriptorSetLayout layout);
-	};
+        // Clear all descriptor pools.
+        void ClearPools(VkDevice device);
 
-	struct VkDescriptorWriter
-	{
-		std::deque<VkDescriptorImageInfo> imageInfos;
-		std::deque<VkDescriptorBufferInfo> bufferInfos;
-		std::vector<VkWriteDescriptorSet> writes;
+        // Destroy all descriptor pools.
+        void DestroyPools(VkDevice device);
 
-		void WriteImage(u32 binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type);
-		void WriteBuffer(u32 binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type);
+        // Allocate a descriptor set from the pool.
+        VkDescriptorSet Allocate(VkDevice device, VkDescriptorSetLayout layout, void *pNext = nullptr);
 
-		void Clear();
-		void UpdateSet(VkDevice device, VkDescriptorSet set);
-	};
+    private:
+        VkDescriptorPool GetPool(VkDevice device); // Retrieve a ready pool.
+        VkDescriptorPool CreatePool(VkDevice device, u32 setCount, std::span<PoolSizeRatio> poolRatios); // Create a new descriptor pool.
 
-	class VkDescriptor
-	{
-	public:
-		struct PoolSizeRatio
-		{
-			VkDescriptorType type;
-			float ratio;
-		};
-
-		void Init(VkDevice device, u32 initialSets, std::span<PoolSizeRatio> poolRatios);
-		void ClearPools(VkDevice device);
-		void DestroyPools(VkDevice device);
-
-		VkDescriptorSet Allocate(VkDevice device, VkDescriptorSetLayout layout, void *pNext = nullptr);
-
-	private:
-		VkDescriptorPool GetPool(VkDevice device);
-		VkDescriptorPool CreatePool(VkDevice device, u32 setCount, std::span<PoolSizeRatio> poolRatios);
-
-		std::vector<PoolSizeRatio> ratios;
-		std::vector<VkDescriptorPool> fullPools;
-		std::vector<VkDescriptorPool> readyPools;
-		u32 setsPerPool{};
-	};
-
+        std::vector<PoolSizeRatio> ratios;  // Pool size ratios (used for creating new pools).
+        std::vector<VkDescriptorPool> fullPools;  // Pools that are full and cannot allocate more sets.
+        std::vector<VkDescriptorPool> readyPools;  // Pools that can still allocate sets.
+        u32 setsPerPool{};  // Number of sets per pool.
+    };
 
 } // namespace GraphicsAPI::Vulkan
-
 
 #endif // VULKANDESCRIPTOR_H
