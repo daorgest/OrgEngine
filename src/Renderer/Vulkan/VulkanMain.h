@@ -4,6 +4,7 @@
 #pragma once
 #ifdef VULKAN_BUILD
 
+#include "VulkanInitializers.h"
 #include "VulkanDescriptor.h"
 #include "VulkanHeader.h"
 #include "VulkanLoader.h"
@@ -79,7 +80,7 @@ namespace GraphicsAPI::Vulkan
 	class VkEngine
 	{
 	public:
-		explicit VkEngine(Platform::WindowContext *winManager);
+		explicit VkEngine(Platform::WindowContext* winManager);
 		~VkEngine();
 
 		void Run();
@@ -111,63 +112,50 @@ namespace GraphicsAPI::Vulkan
 		void RenderQuickStatsImGui();
 
 		// Utility Functions
-		static VkPipelineShaderStageCreateInfo PipelineShaderStageCreateInfo(VkShaderStageFlagBits stage,
-																			 VkShaderModule		   shaderModule);
-		VkComputePipelineCreateInfo			   ComputePipelineCreateInfo(VkPipelineShaderStageCreateInfo shaderStage,
-																		 VkPipelineLayout				 layout);
-		VkPipelineLayoutCreateInfo CreatePipelineLayoutInfo();
-		static VkCommandPoolCreateInfo CommandPoolCreateInfo(u32 queueFamilyIndex, VkCommandPoolCreateFlags flags);
-		VkCommandBufferAllocateInfo CommandBufferAllocateInfo(VkCommandPool pool, u32 count);
-		VkCommandBufferBeginInfo CommandBufferBeginInfo(VkCommandBufferUsageFlags flags);
-		VkSemaphoreSubmitInfo SemaphoreSubmitInfo(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore);
-		VkCommandBufferSubmitInfo CommandBufferSubmitInfo(VkCommandBuffer cmd);
-		VkSubmitInfo2 SubmitInfo(VkCommandBufferSubmitInfo *cmd, VkSemaphoreSubmitInfo *signalSemaphoreInfo,
-								 VkSemaphoreSubmitInfo *waitSemaphoreInfo);
-		VkFenceCreateInfo FenceCreateInfo(VkFenceCreateFlags flags) const;
-		VkSemaphoreCreateInfo SemaphoreCreateInfo(VkSemaphoreCreateFlags flags) const;
-		static VkImageCreateInfo ImageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
-		static VkImageViewCreateInfo ImageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
-		void CreateImageWithVMA(const VkImageCreateInfo &imageInfo, VkMemoryPropertyFlags memoryPropertyFlags,
-								VkImage &image, VmaAllocation &allocation) const;
+		void CreateImageWithVMA(const VkImageCreateInfo& imageInfo, VkMemoryPropertyFlags memoryPropertyFlags,
+		                        VkImage& image, VmaAllocation& allocation) const;
 		static void CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize,
-							  VkExtent2D dstSize);
+		                             VkExtent2D dstSize);
 		AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-		void DestroyBuffer(const AllocatedBuffer &buffer) const;
+		void DestroyBuffer(const AllocatedBuffer& buffer) const;
 		void CleanupAlloc();
 		GPUMeshBuffers UploadMesh(std::span<u32> indices, std::span<Vertex> vertices);
 		VkDeviceAddress GetBufferDeviceAddress(VkBuffer buffer) const;
-		void LogMemoryUsage();
-		void *MapBuffer(const AllocatedBuffer &buffer);
-		void UnmapBuffer(const AllocatedBuffer &buffer);
+		void* MapBuffer(const AllocatedBuffer& buffer);
+		void UnmapBuffer(const AllocatedBuffer& buffer);
 		void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout,
-							 VkImageLayout newLayout) const;
-		[[nodiscard]] static VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask) ;
-		static VkRenderingInfo RenderInfo(VkExtent2D extent, VkRenderingAttachmentInfo *colorAttachment,
-								   VkRenderingAttachmentInfo *depthAttachment);
-		VkRenderingAttachmentInfo AttachmentInfo(VkImageView view, VkClearValue *clear, VkImageLayout layout);
-		VkRenderingAttachmentInfo DepthAttachmentInfo(VkImageView view, VkImageLayout layout);
-		void ImmediateSubmit(std::function<void(VkCommandBuffer cmd)> &&function);
+		                     VkImageLayout newLayout) const;
+		[[nodiscard]] static VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask);
+		void ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 		// Swapchain Management
-		void	   CreateSwapchain(u32 width, u32 height);
+		void CreateSwapchain(u32 width, u32 height);
 		[[nodiscard]] VkExtent3D getScreenResolution() const;
 		void DestroySwapchain() const;
 
 		// Textures
 		AllocatedImage CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-		AllocatedImage CreateImageData(void *data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage,
-								   bool mipmapped = false);
-		AllocatedImage CreateDefaultImage(const glm::vec4& color, const std::string& name);
-		void DestroyImage(const AllocatedImage &img);
+		AllocatedImage CreateImageData(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage,
+		                               bool mipmapped = false);
+		void DestroyImage(const AllocatedImage& img);
 
 		// Static Utility Functions
-		static void CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData &vd);
+		static void CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData& vd);
 		static void PrintAvailableExtensions();
 		static std::string decodeDriverVersion(u32 driverVersion, u32 vendorID);
 
 		VkDescriptorSetLayout gpuSceneDataDescriptorLayout_{};
 		VkFormat swapchainImageFormat_;
 		AllocatedImage depthImage_{};
+
+		DrawContext mainDrawContext{};
+		std::unordered_map<std::string, std::shared_ptr<Node>> loadNodes;
+		void UpdateScene();
+
+
+		[[nodiscard]] std::string GetGPUName() const { return deviceProperties.deviceName; }
+		[[nodiscard]] float GetFPS() const { return fps_; }
+
 		bool isInit = false;
 
 	private:
@@ -176,11 +164,16 @@ namespace GraphicsAPI::Vulkan
 		float renderScale = 1.0f;
 		float spacing = 5.0f;
 		float fps_ = 0.0f;
+		float deltaTime_ = 0.0f;
+		float lastTime_ = 0.0f;
+		float timeSinceLastFPSUpdate_ = 0.0f;
+		const float fpsUpdateInterval_ = 1.0f; // Update FPS every 1 second
 		bool meshLoaded_ = false;
 
 		Platform::WindowContext* windowContext_;
 		VulkanData vd;
 		VmaAllocator allocator_;
+		VkPhysicalDeviceProperties deviceProperties{};
 		VkQueue graphicsQueue_{};
 		u32 graphicsQueueFamily_{};
 

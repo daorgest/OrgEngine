@@ -187,8 +187,10 @@ void VkDescriptorWriter::WriteImage(u32 binding, VkImageView image, VkSampler sa
         .imageLayout = layout
     });
 
-    VkWriteDescriptorSet writeSet = {
+    VkWriteDescriptorSet writeSet
+	{
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = VK_NULL_HANDLE,
         .dstBinding = binding,
         .descriptorCount = 1,
         .descriptorType = type,
@@ -205,7 +207,7 @@ void VkDescriptorWriter::Clear()
     writes.clear();
 }
 
-void VkDescriptorWriter::UpdateSet(VkDevice device, VkDescriptorSet set)
+void VkDescriptorWriter::UpdateSet(VkDevice device, VkDescriptorSet& set)
 {
     for (auto& write : writes)
     {

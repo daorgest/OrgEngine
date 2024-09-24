@@ -35,7 +35,7 @@ namespace GraphicsAPI::Vulkan
         void WriteImage(u32 binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type);
         void WriteBuffer(u32 binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type);
         void Clear();
-        void UpdateSet(VkDevice device, VkDescriptorSet set);
+        void UpdateSet(VkDevice device, VkDescriptorSet &set);
     };
 
     // VkDescriptor: Manages descriptor pools and allocation.
