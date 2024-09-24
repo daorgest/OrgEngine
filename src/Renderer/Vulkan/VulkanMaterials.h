@@ -15,26 +15,6 @@ namespace GraphicsAPI::Vulkan {
 
 namespace GraphicsAPI::Vulkan
 {
-
-	enum class MaterialPass : u8
-	{
-		MainColor,
-		Transparent,
-		Other
-	};
-	struct MaterialPipeline
-	{
-		VkPipeline pipeline;
-		VkPipelineLayout layout;
-	};
-
-	struct MaterialInstance
-	{
-		MaterialPipeline* pipeline{ nullptr };   // Pointer to the associated pipeline
-		VkDescriptorSet materialSet{ VK_NULL_HANDLE };   // Descriptor set for the material
-		MaterialPass passType;   // The type of material pass (MainColor, Transparent, etc.)
-	};
-
 	// GLTFMaterial class handling the metallic-roughness material model
 	class GLTFMetallicRoughness : public VkLoader
 	{
@@ -52,7 +32,7 @@ namespace GraphicsAPI::Vulkan
 		{
 			glm::vec4 colorFactors{};
 			glm::vec4 metalRoughnessFactors{};
-			SafeArray<glm::vec4, 14> extra{};   // Extra padding for the uniform buffer
+			glm::vec4 extra[14];
 		};
 
 		// Resources used by the material (images, samplers, and buffer)
