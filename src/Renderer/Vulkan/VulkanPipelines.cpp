@@ -77,12 +77,7 @@ VkPipeline PipelineBuilder::BuildPipeline(VkDevice device, const PipelineData& d
     pipelineInfo.pDynamicState = &dynamicInfo;
 
     VkPipeline pipeline;
-    VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline);
-    if (result != VK_SUCCESS)
-    {
-        LOG(ERR, "Failed to create graphics pipeline");
-    	return VK_NULL_HANDLE;
-    }
+    VK_CHECK(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline));
 
     return pipeline;
 }
@@ -91,9 +86,9 @@ PipelineBuilder& PipelineBuilder::SetShaders(VkShaderModule vertexShader, VkShad
 {
     data.shaderStages.stages.clear();
     data.shaderStages.stages.push_back(
-        VkEngine::PipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertexShader));
+        VkInfo::PipelineShaderStageInfo(VK_SHADER_STAGE_VERTEX_BIT, vertexShader));
     data.shaderStages.stages.push_back(
-        VkEngine::PipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader));
+        VkInfo::PipelineShaderStageInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader));
 	return *this;
 }
 

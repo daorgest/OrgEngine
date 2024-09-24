@@ -10,18 +10,25 @@ using namespace GraphicsAPI;
 
 std::vector<u32> ResourceLoader::ReadFile(const std::filesystem::path& filePath) const
 {
-	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
-	if (!file.is_open()) {
+	auto fileSize = file_size(filePath);
+
+	if (fileSize % sizeof(u32) != 0) {
+		throw std::runtime_error("File size is not aligned to u32: " + filePath.string());
+	}
+
+	// Open the file
+	std::ifstream file(filePath, std::ios::binary);
+	if (!file.is_open())
+	{
 		throw std::runtime_error("Failed to open file: " + filePath.string());
 	}
-	// if(file_size(filePath))
 
-	size_t fileSize = file.tellg();
+	// Create a buffer and read file contents
 	std::vector<u32> buffer(fileSize / sizeof(u32));
-
-	file.seekg(0);
 	file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
-	file.close();
+	if (!file) {
+		throw std::runtime_error("Failed to read the entire file: " + filePath.string());
+	}
 
 	return buffer;
 }

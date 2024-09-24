@@ -17,5 +17,6 @@
 	path = libs/3rdParty/fastgltf
 	url = https://github.com/spnda/fastgltf.git
 [submodule "libs/3rdParty/tracy"]
+    branch = v0.11.1
 	path = libs/3rdParty/tracy
 	url = https://github.com/wolfpld/tracy.git

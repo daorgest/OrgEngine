@@ -48,7 +48,6 @@ endif()
 # Include directories
 target_include_directories(OrgEngine PRIVATE
         "${CMAKE_SOURCE_DIR}/src"
-        "${CMAKE_SOURCE_DIR}/libs/3rdParty"
 )
 
 # Source files

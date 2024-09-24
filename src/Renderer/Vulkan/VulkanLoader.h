@@ -9,10 +9,13 @@
 
 namespace GraphicsAPI::Vulkan
 {
+	struct MaterialInstance;
+
 	struct GeoSurface
 	{
 		u32 startIndex;
 		u32 count;
+		MaterialInstance* material;
 	};
 
 
@@ -31,7 +34,8 @@ namespace GraphicsAPI::Vulkan
 	{
 	public:
 		bool LoadShader(const std::filesystem::path &filePath, VkDevice device, VkShaderModule *outShaderModule) const;
-		std::optional<std::vector<std::shared_ptr<MeshAsset>>> LoadGltfMeshes(VkEngine *engine, const std::filesystem::path &filePath);
+		std::optional<std::vector<std::shared_ptr<MeshAsset>>> LoadGltfMeshes(VkEngine* engine,
+									       const std::filesystem::path& filePath, bool OverrideColors = false);
 
 	};
 } // namespace GraphicsAPI::Vulkan

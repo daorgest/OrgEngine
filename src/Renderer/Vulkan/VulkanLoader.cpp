@@ -41,7 +41,7 @@ namespace GraphicsAPI::Vulkan
 	}
 
 	std::optional<std::vector<std::shared_ptr<MeshAsset>>> VkLoader::LoadGltfMeshes(VkEngine* engine,
-                                                                               const std::filesystem::path& filePath)
+                                                                               const std::filesystem::path& filePath, bool OverrideColors)
 	{
 		LOG(INFO, "Loading GLTF model: ", filePath.string());
 
@@ -53,7 +53,6 @@ namespace GraphicsAPI::Vulkan
 		}
 
 		constexpr auto gltfOptions = fastgltf::Options::LoadExternalBuffers;
-
 		fastgltf::Parser parser{};
 
 		auto loadResult = parser.loadGltfBinary(gltfFile.get(), filePath.parent_path(), gltfOptions);
@@ -63,26 +62,29 @@ namespace GraphicsAPI::Vulkan
 			return std::nullopt;
 		}
 
-		// Successfully loaded
 		LOG(INFO, "Successfully loaded GLTF model: ", filePath.string());
 		fastgltf::Asset gltf = std::move(loadResult.get());
 		std::vector<std::shared_ptr<MeshAsset>> meshes;
-		std::vector<u32> indices;
-		std::vector<Vertex> vertices;
 
 		for (fastgltf::Mesh& mesh : gltf.meshes)
 		{
 			MeshAsset newMesh;
 			newMesh.name = mesh.name;
 
-			indices.clear();
-			vertices.clear();
+			// Containers for vertices and indices
+			std::vector<u32> indices;
+			std::vector<Vertex> vertices;
 
 			for (auto&& primitive : mesh.primitives)
 			{
 				GeoSurface newSurface{};
-				auto	   indicesAccessorIndex = primitive.indicesAccessor.value();
+				if (!primitive.indicesAccessor)
+				{
+					LOG(WARN, "Primitive has no indices accessor, skipping.");
+					continue;
+				}
 
+				auto indicesAccessorIndex = primitive.indicesAccessor.value();
 				if (indicesAccessorIndex >= gltf.accessors.size())
 				{
 					LOG(ERR, "Invalid indices accessor index for mesh: ", mesh.name);
@@ -114,16 +116,16 @@ namespace GraphicsAPI::Vulkan
 					vertices.resize(vertices.size() + posAccessor.count);
 
 					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
-																  [&](const glm::vec3 v, const size_t index)
-																  {
-																	  Vertex newVertex{};
-																	  newVertex.position			  = v;
-																	  newVertex.normal				  = {1, 0, 0};
-																	  newVertex.color				  = glm::vec4{1.f};
-																	  newVertex.uv_x				  = 0;
-																	  newVertex.uv_y				  = 0;
-																	  vertices[initialVertex + index] = newVertex;
-																  });
+						[&](const glm::vec3 v, const size_t index)
+						{
+							Vertex newVertex{};
+							newVertex.position = v;
+							newVertex.normal = {1, 0, 0};  // Default normal
+							newVertex.color = glm::vec4{1.f}; // Default color
+							newVertex.uv_x = 0;
+							newVertex.uv_y = 0;
+							vertices[initialVertex + index] = newVertex;
+						});
 				}
 				else
 				{
@@ -193,7 +195,6 @@ namespace GraphicsAPI::Vulkan
 				newMesh.surfaces.push_back(newSurface);
 			}
 
-			constexpr bool OverrideColors = true;
 			if (OverrideColors)
 			{
 				for (Vertex& vtx : vertices)
