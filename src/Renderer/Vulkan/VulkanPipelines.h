@@ -14,14 +14,15 @@ namespace GraphicsAPI::Vulkan
 
 	struct PipelineConfig
 	{
-		VkPipelineInputAssemblyStateCreateInfo inputAssembly;
-		VkPipelineRasterizationStateCreateInfo rasterizer;
-		VkPipelineColorBlendAttachmentState colorBlendAttachment;
-		VkPipelineMultisampleStateCreateInfo multisampling;
-		VkPipelineLayout layout;
-		VkPipelineDepthStencilStateCreateInfo depthStencil;
-		VkPipelineRenderingCreateInfo renderInfo;
-		VkFormat colorAttachmentFormat;
+		VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
+		VkPipelineRasterizationStateCreateInfo rasterizer = {};
+		VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
+		VkPipelineMultisampleStateCreateInfo multisampling = {};
+		VkPipelineLayout layout = VK_NULL_HANDLE;
+		VkPipelineDepthStencilStateCreateInfo depthStencil = {};
+		VkPipelineRenderingCreateInfo renderInfo = {};
+		VkFormat colorAttachmentFormat = VK_FORMAT_UNDEFINED;
+		VkFormat depthAttachmentFormat = VK_FORMAT_UNDEFINED;
 	};
 
 	struct PipelineData

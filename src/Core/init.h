@@ -1,4 +1,4 @@
-#pragma once
+  #pragma once
 
 // Standard Library Includes
 #include <deque>

@@ -19,7 +19,7 @@ class Application
 {
 public:
 	Application();
-	~Application() = default;
+	~Application();
 
 	void Run();
 	static void HandleInput(Input& input);

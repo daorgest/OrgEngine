@@ -10,6 +10,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 #include "../../Core/Array.h"
 #include "../../Platform/WindowContext.h"
@@ -87,4 +88,26 @@ namespace GraphicsAPI::Vulkan
 		VkExtent3D	  imageExtent;
 		VkFormat	  imageFormat;
 	};
+
+	enum class MaterialPass : u8
+	{
+		MainColor,
+		Transparent,
+		Other
+	};
+
+	struct MaterialPipeline
+	{
+		VkPipeline pipeline;
+		VkPipelineLayout layout;
+	};
+
+	struct MaterialInstance
+	{
+		MaterialPipeline* pipeline{ nullptr };   // Pointer to the associated pipeline
+		VkDescriptorSet materialSet{ VK_NULL_HANDLE };   // Descriptor set for the material
+		MaterialPass passType;   // The type of material pass (MainColor, Transparent, etc.)
+		Vertex data;
+	};
+
 }

@@ -25,9 +25,9 @@ void InitConsole()
 int main(int argc, char** argv)
 {
 	Logger::Init();
-#ifdef DEBUG
-    InitConsole();
-#endif
+ #ifdef DEBUG
+     InitConsole();
+ #endif
 
     Application app;
 	app.Run();

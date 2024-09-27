@@ -56,7 +56,6 @@ namespace Platform
 
     bool Win32::Init() const
     {
-    	Timer timer(__FUNCTION__);
         const WNDCLASSEX wcex
         {
             sizeof(wcex),
@@ -114,7 +113,7 @@ namespace Platform
         SetFocus(wc_->hwnd);
         UpdateWindow(wc_->hwnd);
 
-        LOG(INFO, "Window created successfully. HWND:", wc_->hwnd);
+        LOG(INFO, "Window created successfully.");
         return true;
     }
 

@@ -13,12 +13,14 @@ Application::Application() :
 	glEngine_(&windowContext_)
 #endif
 {
-	if (initialized_)
-	{
-		LoadAudio();
-		audio_.StartBackgroundPlayback(sound);
-	}
+	// if (initialized_)
+	// {
+	// 	LoadAudio();
+	// 	audio_.StartBackgroundPlayback(sound);
+	// }
 }
+
+Application::~Application() { vkEngine_.Cleanup(); }
 
 // bool Application::InitializeEngine()
 // {

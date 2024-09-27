@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Renderer selection options (only one should be TRUE)
-option(USE_DIRECTX11 "Use DirectX 11 Renderer" OFF)
-option(USE_VULKAN "Use Vulkan Renderer" ON)
+option(USE_DIRECTX11 "Use DirectX 11 Renderer" ON)
+option(USE_VULKAN "Use Vulkan Renderer" OFF)
 option(USE_OPENGL "Use OpenGL Renderer" OFF)
 
 # Ensure only one renderer is enabled
@@ -31,17 +31,19 @@ elseif(USE_OPENGL)
   target_compile_definitions(OrgEngine PRIVATE OPENGL_BUILD)
 endif()
 
-# MSVC-specific configurations
 if(MSVC)
   # Release flags
   target_compile_options(OrgEngine PRIVATE
-          $<$<CONFIG:Release>:/O2 /DNDEBUG /Ot /GT /GL /arch:AVX2>
+          $<$<CONFIG:Release>:/O2 /DNDEBUG /Ot /GT /GL /arch:AVX2 /fp:fast /GR- /EHsc /Zc:inline>
   )
+  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG /OPT:REF /OPT:ICF")
+
   # Debug flags
   target_compile_options(OrgEngine PRIVATE
-          $<$<CONFIG:Debug>:/Od /DEBUG /Zi>
+          $<$<CONFIG:Debug>:/Od /DEBUG /Zi /MP>
   )
-  # Enable multi-processor compilation
+
+  # Enable multi-processor compilation for all builds
   target_compile_options(OrgEngine PRIVATE /MP)
 endif()
 

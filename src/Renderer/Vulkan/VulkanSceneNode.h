@@ -31,8 +31,8 @@ namespace GraphicsAPI::Vulkan
 		std::weak_ptr<Node> parent;
 		std::vector<std::shared_ptr<Node>> children;
 
-		glm::mat4 localTransform;
-		glm::mat4 worldTransform;
+		glm::mat4 localTransform {1.0f};
+		glm::mat4 worldTransform {1.0f};
 
 		void RefreshTransform(const glm::mat4& parentMatrix);
 		virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx);
@@ -49,14 +49,12 @@ namespace GraphicsAPI::Vulkan
 	// Structure to hold rendering-related data
 	struct RenderObject
 	{
-		uint32_t indexCount;
-		uint32_t firstIndex;
-		VkBuffer indexBuffer;
-
-		MaterialInstance *material;
-
-		glm::mat4		transform;
-		VkDeviceAddress vertexBufferAddress;
+		uint32_t		  indexCount;
+		uint32_t		  firstIndex;
+		VkBuffer		  indexBuffer;
+		MaterialInstance* material;
+		glm::mat4		  transform;
+		VkDeviceAddress	  vertexBufferAddress;
 	};
 
 	// Structure to hold a list of RenderObjects

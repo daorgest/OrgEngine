@@ -5,15 +5,16 @@
 #include "VulkanSceneNode.h"
 
 #include "VulkanLoader.h"
+#include "VulkanMaterials.h"
 
 using namespace GraphicsAPI::Vulkan;
 
 void Node::RefreshTransform(const glm::mat4& parentMatrix)
 {
 	worldTransform = parentMatrix * localTransform;
-	for (const auto& c : children)
+	for (const auto& child : children)
 	{
-		c->RefreshTransform(worldTransform);
+		child->RefreshTransform(worldTransform);
 	}
 }
 
@@ -33,14 +34,15 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
 
 	for (auto& s : mesh->surfaces)
 	{
-		RenderObject def{};
-		def.indexCount = s.count;
-		def.firstIndex = s.startIndex;
-		def.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
-		// def.material = &s.material->data;
-
-		def.transform = nodeMatrix;
-		def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
+		RenderObject def
+		{
+			.indexCount = s.count,
+			.firstIndex = s.startIndex,
+			.indexBuffer = mesh->meshBuffers.indexBuffer.buffer,
+			// .material = &s.material->data,
+			.transform = nodeMatrix,
+			.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress
+		};
 
 		ctx.OpaqueSurfaces.push_back(def);
 	}

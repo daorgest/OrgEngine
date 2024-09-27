@@ -2,7 +2,6 @@
 // Created by Orgest on 4/12/2024.
 //
 
-#include <Core/Timer.h>
 #include <backends/imgui_impl_win32.h>
 #ifdef VULKAN_BUILD
 #include "VulkanMain.h"
@@ -42,8 +41,6 @@ void VkEngine::Run()
 {
 	MSG msg = {};
 	bool bQuit = false;
-
-	Timer timer(__FUNCTION__);
 
 	while (!bQuit)
 	{
@@ -101,40 +98,6 @@ void VkEngine::Run()
 			continue;
 		}
 
-		// Calculate delta time (in seconds)
-		float currentTime = timer.Elapsed();
-		deltaTime_ = currentTime - lastTime_;
-		lastTime_ = currentTime;
-
-		// Accumulate the time since the last FPS update
-		timeSinceLastFPSUpdate_ += deltaTime_;
-
-		// Only update FPS and window title once per second
-		if (timeSinceLastFPSUpdate_ >= fpsUpdateInterval_)
-		{
-			if (deltaTime_ > 0.0f)
-			{
-				fps_ = 1.0f / deltaTime_;
-			}
-
-			// Format the title string
-			std::wstringstream windowText;
-			windowText << L"OrgEngine - "
-#ifdef DEBUG
-					   << L"Debug - ";
-#else
-			<< L"Release - ";
-#endif
-			windowText << deviceProperties.deviceName
-					   << L" - FPS: " << std::fixed << std::setprecision(2) << fps_;
-
-			// Update the window title
-			SetWindowText(windowContext_->hwnd, windowText.str().c_str());
-
-			// Reset the FPS update timer
-			timeSinceLastFPSUpdate_ = 0.0f;
-		}
-
 		// Start ImGui new frame
 		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplWin32_NewFrame();
@@ -148,6 +111,8 @@ void VkEngine::Run()
 		Draw();
 		// win32_->input.reset();
 	}
+
+	Cleanup();
 }
 
 void VkEngine::ResizeSwapchain()
@@ -423,15 +388,16 @@ void VkEngine::InitVulkan()
 	vmaCreateAllocator(&allocInfo, &allocator_);
 	mainDeletionQueue_.pushFunction([&]()
 	{
-		vmaDestroyAllocator(allocator_);
-	});
+		vmaDestroyAllocator(allocator_); }, "Vma Allocator");
 	LOG(INFO, "VMA Initialized :D");
 
 	graphicsQueue_ = devRet.value().get_queue(vkb::QueueType::graphics).value();
 	graphicsQueueFamily_ = devRet.value().get_queue_index(vkb::QueueType::graphics).value();
 
 	InitializeCommandPoolsAndBuffers();
+#ifdef TRACY_ENABLE
 	TracyVkContext(vd.physicalDevice_, vd.device_, graphicsQueue_, GetCurrentFrame().mainCommandBuffer_);
+#endif
 	isInit = true;
 }
 
@@ -499,7 +465,8 @@ void VkEngine::InitImgui()
 	{
 		ImGui_ImplVulkan_Shutdown();
 		vkDestroyDescriptorPool(device, pool, nullptr);
-	});
+		},
+		" Imgui");
 }
 
 #pragma endregion Initialization
@@ -511,7 +478,6 @@ void VkEngine::Cleanup()
 	if (isInit)
 	{
 		vkDeviceWaitIdle(vd.device_);
-
 		TracyVkDestroy(tracyContext_);
 
 		for (auto & frame : frames_)
@@ -530,15 +496,14 @@ void VkEngine::Cleanup()
 			DestroyBuffer(mesh->meshBuffers.indexBuffer);
 			DestroyBuffer(mesh->meshBuffers.vertexBuffer);
 		}
-
+		DestroySwapchain();
 		mainDeletionQueue_.Flush();
-		// DestroySwapchain();
+
 		vkDestroySurfaceKHR(vd.instance_, vd.surface_, nullptr);
 		vkDestroyDevice(vd.device_, nullptr);
+
 		vkb::destroy_debug_utils_messenger(vd.instance_, vd.dbgMessenger_);
 		vkDestroyInstance(vd.instance_, nullptr);
-		// TODO: MOVE THIS OVER TO win32's WM_QUIT
-		TracyVkDestroy(tracyContext_);
 		isInit = false;
 	}
 }
@@ -607,9 +572,7 @@ void VkEngine::CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData& vd
 
 	if (vkCreateWin32SurfaceKHR(vd.instance_, &createInfo, nullptr, &vd.surface_) != VK_SUCCESS)
 	{
-		MessageBox(nullptr, L"Failed to create Vulkan Surface!, Check to see if your drivers are installed properly",
-		           L"GPU Error!", MB_OK);
-		exit(1);
+		LOG(ERR, "Failed to create Vulkan Surface! Check if your drivers are installed properly.");
 	}
 }
 
@@ -699,7 +662,7 @@ void VkEngine::InitSwapChain()
 
 		vkDestroyImageView(vd.device_, depthImage_.imageView, nullptr);
 		vmaDestroyImage(allocator_, depthImage_.image, depthImage_.allocation);
-	});
+	}, "Destroy Draw and Depth Images");
 }
 
 void VkEngine::DestroySwapchain() const
@@ -709,9 +672,9 @@ void VkEngine::DestroySwapchain() const
 		vkDestroySwapchainKHR(vd.device_, swapchain_, nullptr);
 	}
 
-	for (int i = 0; i < swapchainImageViews_.size(); i++)
+	for (auto swapchainImageView : swapchainImageViews_)
 	{
-		vkDestroyImageView(vd.device_, swapchainImageViews_[i], nullptr);
+		vkDestroyImageView(vd.device_, swapchainImageView, nullptr);
 	}
 }
 
@@ -732,8 +695,9 @@ void VkEngine::InitCommands()
 
 	mainDeletionQueue_.pushFunction([=]()
 	{
-		vkDestroyCommandPool(vd.device_, immCommandPool_, nullptr);
-	});
+		vkDestroyCommandPool(vd.device_, immCommandPool_, nullptr); 
+	}, "Destroying Command Pool");
+
 	tracyContext_ = TracyVkContext(vd.physicalDevice_, vd.device_, graphicsQueue_, immCommandBuffer_);
 }
 
@@ -787,7 +751,7 @@ void VkEngine::InitSyncStructures()
 	mainDeletionQueue_.pushFunction([=]()
 	{
 		vkDestroyFence(vd.device_, immFence_, nullptr);
-	});
+	},"Destroying Fence");
 }
 
 void VkEngine::ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
@@ -1166,32 +1130,17 @@ void VkEngine::InitBackgroundPipelines()
 	VkComputePipelineCreateInfo skyPipelineCreateInfo = VkInfo::ComputePipelineInfo(skyStageInfo,
 		gradientPipelineLayout_);
 
-	ComputeEffect gradient
-	{
-		.name   = "gradient",
-		.layout = gradientPipelineLayout_,
-		.data   =
-		{
-			.data1 = glm::vec4(1, 0, 0, 1),
-			.data2 = glm::vec4(0, 0, 1, 1)
-		}
-	};
+	gradient.name	= "gradient";
+	gradient.layout = gradientPipelineLayout_;
+	gradient.data	= {glm::vec4(1, 0, 0, 1), glm::vec4(0, 0, 1, 1)};
+	VK_CHECK(vkCreateComputePipelines(vd.device_, VK_NULL_HANDLE, 1, &gradientPipelineCreateInfo, nullptr,
+									  &gradient.pipeline));
 
-	VK_CHECK(vkCreateComputePipelines(vd.device_, VK_NULL_HANDLE, 1, &gradientPipelineCreateInfo, nullptr, &gradient.pipeline));
-
-	ComputeEffect sky
-	{
-		.name   = "sky",
-		.layout = gradientPipelineLayout_,
-		.data   =
-		{
-			.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97)
-		}
-	};
-
+	sky.name   = "sky";
+	sky.layout = gradientPipelineLayout_;
+	sky.data   = {glm::vec4(0.1, 0.2, 0.4, 0.97)};
 	VK_CHECK(vkCreateComputePipelines(vd.device_, VK_NULL_HANDLE, 1, &skyPipelineCreateInfo, nullptr, &sky.pipeline));
 
-	// add the 2 background effects into the array
 	backgroundEffects.push_back(gradient);
 	backgroundEffects.push_back(sky);
 
@@ -1199,12 +1148,28 @@ void VkEngine::InitBackgroundPipelines()
 	vkDestroyShaderModule(vd.device_, gradientShader, nullptr);
 	vkDestroyShaderModule(vd.device_, skyShader, nullptr);
 
-	mainDeletionQueue_.pushFunction([&]()
-	{
-		vkDestroyPipelineLayout(vd.device_, gradientPipelineLayout_, nullptr);
-		vkDestroyPipeline(vd.device_, sky.pipeline, nullptr);
-		vkDestroyPipeline(vd.device_, gradient.pipeline, nullptr);
-	});
+	mainDeletionQueue_.pushFunction(
+		[&]()
+		{
+			if (gradientPipelineLayout_ != VK_NULL_HANDLE)
+			{
+				vkDestroyPipelineLayout(vd.device_, gradientPipelineLayout_, nullptr);
+				gradientPipelineLayout_ = VK_NULL_HANDLE;  // Set to null after destruction
+			}
+
+			if (sky.pipeline != VK_NULL_HANDLE)
+			{
+				vkDestroyPipeline(vd.device_, sky.pipeline, nullptr);
+				sky.pipeline = VK_NULL_HANDLE;	// Set to null after destruction
+			}
+
+			if (gradient.pipeline != VK_NULL_HANDLE)
+			{
+				vkDestroyPipeline(vd.device_, gradient.pipeline, nullptr);
+				gradient.pipeline = VK_NULL_HANDLE;	 // Set to null after destruction
+			}
+		},
+		"Destroying Background Pipeline");
 }
 
 void VkEngine::InitMeshPipeline()
@@ -1256,7 +1221,8 @@ void VkEngine::InitMeshPipeline()
     {
         vkDestroyPipelineLayout(vd.device_, meshPipelineLayout_, nullptr);
         vkDestroyPipeline(vd.device_, meshPipeline_, nullptr);
-    });
+		},
+		"Mesh Pipeline");
 }
 
 #pragma endregion Pipelines
@@ -1315,8 +1281,7 @@ void VkEngine::InitDescriptors()
 		frames_[i].frameDescriptors_.Init(vd.device_, 1000, frameSizes);
 
 		mainDeletionQueue_.pushFunction([&, i]() {
-			frames_[i].frameDescriptors_.DestroyPools(vd.device_);
-		});
+			frames_[i].frameDescriptors_.DestroyPools(vd.device_); }, "Descrptor Pools");
 	}
 }
 
@@ -1372,9 +1337,7 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
     });
 
     // Map the uniform buffer memory to CPU address space and copy scene data
-    void* mappedData = nullptr;
-    VK_CHECK(vmaMapMemory(allocator_, gpuSceneDataBuffer.allocation, &mappedData));
-    memcpy(mappedData, &sceneData, sizeof(GPUSceneData));
+	MapBuffer(gpuSceneDataBuffer);
     vmaUnmapMemory(allocator_, gpuSceneDataBuffer.allocation);
 
     // Create and update descriptor set for scene data buffer
@@ -1541,8 +1504,8 @@ void VkEngine::InitDefaultData()
         // Add material constants buffer to deletion queue for cleanup
         mainDeletionQueue_.pushFunction([=, this]()
         {
-            DestroyBuffer(materialConstants);
-        });
+            DestroyBuffer(materialConstants); 
+		} ,"Destroting buffer for material constants");
 
         // Set buffer for material resources
         materialResources.dataBuffer = materialConstants.buffer;
@@ -1567,7 +1530,8 @@ void VkEngine::InitDefaultData()
         DestroyImage(greyImage_);
         DestroyImage(blackImage_);
         DestroyImage(errorCheckerboardImage_);
-    });
+		},
+		"Destroying Images");
 }
 
 void VkEngine::UpdateScene()

@@ -20,20 +20,25 @@ namespace GraphicsAPI::Vulkan
 
 	struct DeletionQueue
 	{
-		std::deque<std::function<void()>> deletors;
+		std::deque<std::pair<std::string, std::function<void()>>> deletors;
 
-		void pushFunction(std::function<void()> &&function) { deletors.emplace_back(std::move(function)); }
+		void pushFunction(std::function<void()>&& function, const std::string& label = "")
+		{
+			deletors.emplace_back(label, std::move(function));
+		}
 
 		void Flush()
 		{
 			// Reverse iterate the deletion queue to execute all the functions
 			for (auto it = deletors.rbegin(); it != deletors.rend(); ++it)
 			{
-				(*it)(); // Call functors
+				if (!it->first.empty()) std::cout << "Deleting: " << it->first << "\n";
+
+				it->second();  // Call the function
 			}
 
 			// Clear the deque by swapping with an empty deque
-			std::deque<std::function<void()>>().swap(deletors);
+			std::deque<std::pair<std::string, std::function<void()>>>().swap(deletors);
 		}
 	};
 
@@ -177,6 +182,10 @@ namespace GraphicsAPI::Vulkan
 		VkQueue graphicsQueue_{};
 		u32 graphicsQueueFamily_{};
 
+		std::vector<VkPresentModeKHR> availablePresentModes_;
+		std::vector<std::string> presentModeNames_;
+		int currentPresentModeIndex_ = 0;
+
 		// Swapchain properties
 		VkSwapchainKHR swapchain_{VK_NULL_HANDLE};
 		std::vector<VkImage> swapchainImages_;
@@ -246,6 +255,9 @@ namespace GraphicsAPI::Vulkan
 		TracyVkCtx tracyContext_{};
 		// Deletion queue
 		DeletionQueue mainDeletionQueue_;
+
+		ComputeEffect gradient;
+		ComputeEffect sky;
 	};
 } // namespace GraphicsAPI::Vulkan
 
