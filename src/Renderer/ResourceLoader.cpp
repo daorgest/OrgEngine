@@ -4,9 +4,7 @@
 
 #include "ResourceLoader.h"
 
-#include "Vulkan/VulkanMaterials.h"
 using namespace GraphicsAPI;
-
 
 std::vector<u32> ResourceLoader::ReadFile(const std::filesystem::path& filePath) const
 {

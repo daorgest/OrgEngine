@@ -4,118 +4,167 @@
 
 #include "Application.h"
 
-
-Application::Application() :
-#ifdef VULKAN_BUILD
-	win32_(&windowContext_),
-	vkEngine_(&windowContext_)
-#elif defined(OPENGL_BUILD)
-	glEngine_(&windowContext_)
-#endif
+Application::Application()
 {
-	// if (initialized_)
-	// {
-	// 	LoadAudio();
-	// 	audio_.StartBackgroundPlayback(sound);
-	// }
+
+    initialized_ = InitializeEngine();
+
+    if (initialized_)
+    {
+        LoadAudio();
+        audio_.StartBackgroundPlayback(sound);
+    }
+    else
+    {
+        LOG(ERR, "Failed to initialize the engine.");
+    }
 }
 
-Application::~Application() { vkEngine_.Cleanup(); }
+Application::~Application()
+{
+    CleanupEngine();
+}
 
-// bool Application::InitializeEngine()
-// {
-// #elif defined(OPENGL_BUILD)
-// 	if (!glEngine_.Init())
-// 	{
-// 		LOG(ERR, "Failed to initialize OpenGL engine.");
-// 		return false;
-// 	}
-// #endif
-// 	return true;
-// }
+bool Application::InitializeEngine()
+{
+#ifdef VULKAN_BUILD
+    if (!win32_.Init())
+    {
+        LOG(ERR, "Failed to initialize Win32.");
+        return false;
+    }
 
+    if (!vkEngine_.Init())
+    {
+        LOG(ERR, "Failed to initialize Vulkan engine.");
+        return false;
+    }
+#elif defined(OPENGL_BUILD)
+    if (!glEngine_.Init())
+    {
+        LOG(ERR, "Failed to initialize OpenGL engine.");
+        return false;
+    }
+#endif
+    return true;
+}
+
+void Application::CleanupEngine()
+{
+#ifdef VULKAN_BUILD
+    vkEngine_.Cleanup();
+#elif defined(OPENGL_BUILD)
+    // glEngine_.Cleanup();
+#endif
+}
 
 void Application::Run()
 {
-	// if (!initialized_)
-	// {
-	// 	LOG(ERR, "Engine not initialized. Exiting...");
-	// 	return;
-	// }
+    if (!initialized_)
+    {
+        LOG(ERR, "Engine not initialized. Exiting...");
+        return;
+    }
 
 #ifdef VULKAN_BUILD
-	vkEngine_.Run();
+    vkEngine_.Run();
 #elif defined(OPENGL_BUILD)
-	glEngine_.RenderLoop();
+    glEngine_.RenderLoop();
 #endif
 }
 
 void Application::HandleInput(Input& input)
 {
-	// Update the controller usage status
-	input.updateUsingController();
+    // Update the controller usage status
+    input.updateUsingController();
 
-	// Check if the 'A' button on the controller or the 'A' key on the keyboard is pressed
-	if (input.isInputActive(KeyboardButton::Keys::A, ControllerButton::XboxButton::A))
-	{
-		LOG(INFO, "The 'A' button/key has been pressed.");
-	}
+    // Generalized input handler
+    HandleControllerInput(input);
+    HandleKeyboardAndMouseInput(input);
 
-	// Check if the controller's 'B' button is pressed (controller specific)
-	if (input.isControllerButtonPressed(ControllerButton::XboxButton::B))
-	{
-		LOG(INFO, "The 'B' button on the controller has been pressed.");
-	}
+    // Process input after checking (reset states, etc.)
+    processInputAfter(input);
+}
 
-	// Check if the 'Space' key is pressed (keyboard specific)
-	if (input.isKeyPressed(KeyboardButton::Keys::Space))
-	{
-		LOG(INFO, "The 'Space' key on the keyboard has been pressed.");
-	}
+void Application::HandleControllerInput(Input& input)
+{
+    // Check if the 'A' button on the controller or the 'A' key on the keyboard is pressed
+    if (input.isInputActive(KeyboardButton::Keys::A, ControllerButton::XboxButton::A))
+    {
+        LOG(INFO, "The 'A' button/key has been pressed.");
+    }
 
-	// Check if the left mouse button is pressed
-	if (input.isMouseButtonPressed(input.lMouseButton))
-	{
-		LOG(INFO, "The left mouse button has been pressed.");
-	}
+    // Check if the controller's 'B' button is pressed (controller specific)
+    if (input.isControllerButtonPressed(ControllerButton::XboxButton::B))
+    {
+        LOG(INFO, "The 'B' button on the controller has been pressed.");
+    }
+}
 
-	// Process input after checking (reset states, etc.)
-	processInputAfter(input);
+void Application::HandleKeyboardAndMouseInput(Input& input)
+{
+    // Check if the 'Space' key is pressed (keyboard specific)
+    if (input.isKeyPressed(KeyboardButton::Keys::Space))
+    {
+        LOG(INFO, "The 'Space' key on the keyboard has been pressed.");
+    }
+
+    // Check if the left mouse button is pressed
+    if (input.isMouseButtonPressed(input.lMouseButton))
+    {
+        LOG(INFO, "The left mouse button has been pressed.");
+    }
 }
 
 void Application::LoadAudio()
 {
-	audio_.LoadSound("audio/mementomori.mp3");
-	sound = audio_.sounds[0];
+    audio_.LoadSound("audio/mementomori.mp3");
+    sound = audio_.sounds[0];
 }
 
 void Application::PlaySoundIfNeeded()
 {
-	static FMOD::Channel* channel = audio_.GetChannel();
-	bool isPlaying = false;
+    static FMOD::Channel* channel = audio_.GetChannel();
+    bool isPlaying = false;
 
-	if (channel == nullptr || channel->isPlaying(&isPlaying) != FMOD_OK || !isPlaying)
-	{
-		audio_.PlayGameSound(sound);
-		LOG(INFO, "Audio file is playing: mementomori.mp3");
-	}
+    if (channel == nullptr || channel->isPlaying(&isPlaying) != FMOD_OK || !isPlaying)
+    {
+        audio_.PlayGameSound(sound);
+        LOG(INFO, "Audio file is playing: mementomori.mp3");
+    }
 }
 
-// void Application::Update()
-// {
-// 	// Start ImGui new frame
-// 	ImGui_ImplVulkan_NewFrame();
-// 	ImGui_ImplWin32_NewFrame();
-// 	ImGui::NewFrame();
-// 	ImGui::ShowDemoWindow();
-//
-// 	// Render ImGui components
-// 	vkEngine_.RenderUI();
-// 	ImGui::Render();
-// }
+void Application::Update()
+{
+#ifdef VULKAN_BUILD
+    // Start ImGui new frame for Vulkan
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+    ImGui::ShowDemoWindow();
 
-// void Application::Render()
-// {
-// 	// Draw the frame
-// 	vkEngine_.Draw();
-// }
+    // Render ImGui components
+    vkEngine_.RenderUI();
+    ImGui::Render();
+#elif defined(OPENGL_BUILD)
+    // Start ImGui new frame for OpenGL
+    // ImGui_ImplOpenGL3_NewFrame();
+    // ImGui::NewFrame();
+    // ImGui::ShowDemoWindow();
+    //
+    // // Render ImGui components
+    // // glEngine_.RenderUI();
+    // ImGui::Render();
+#endif
+}
+
+void Application::Render()
+{
+#ifdef VULKAN_BUILD
+    // Draw the frame for Vulkan
+    vkEngine_.Draw();
+#elif defined(OPENGL_BUILD)
+    // Draw the frame for OpenGL
+    // glEngine_.Draw();
+#endif
+}

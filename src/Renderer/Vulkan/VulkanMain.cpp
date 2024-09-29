@@ -27,7 +27,6 @@ VkEngine::VkEngine(Platform::WindowContext *winManager) :
 	swapchainImageFormat_(), windowContext_(winManager), allocator_(nullptr),
 	frames_{}, meshPipelineLayout_(nullptr), meshPipeline_(nullptr), rectangle()
 {
-	Init();
 }
 
 VkEngine::~VkEngine()

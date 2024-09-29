@@ -1,78 +1,69 @@
-//
-// Created by Orgest on 8/31/2024.
-//
-
 #include "OpenGLMain.h"
-
 
 using namespace GraphicsAPI::OpenGL;
 
-OpenGLMain::OpenGLMain(Platform::WindowContext* wc) : wc_(wc)
-{
-}
+OpenGLMain::OpenGLMain(Platform::WindowContext* wc) : wc_(wc) {}
 
 OpenGLMain::~OpenGLMain()
 {
-	// Cleanup OpenGL context and SDL window
-	if (glContext_)
+	// Clean up the OpenGL context and window
+	if (wc_->sdlContext)
 	{
-		SDL_GL_DestroyContext(glContext_);
+		SDL_GL_DestroyContext(wc_->sdlContext);
 	}
-	if (window_)
+
+	if (wc_->sdlWindow)
 	{
-		SDL_DestroyWindow(window_);
+		SDL_DestroyWindow(wc_->sdlWindow);
 	}
+
+	// Quit SDL subsystems
 	SDL_Quit();
 }
 
-
-
-bool OpenGLMain::Init()
+bool OpenGLMain::Init() const
 {
-	// Initialize SDL video subsystem
-	if (SDL_Init(SDL_INIT_VIDEO) < 0)
-	{
-		LOG(ERR, "Failed to initialize SDL: " + std::string(SDL_GetError()));
-		return false;
-	}
-
+	// Initialize SDL for video and OpenGL
+	SDL_Init( SDL_INIT_VIDEO );
 
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-	window_ = SDL_CreateWindow(wc_->appName,
+	// Create the SDL window with OpenGL context
+	wc_->sdlWindow = SDL_CreateWindow(
+		"OpenGL with SDL3",
 		wc_->screenWidth,
 		wc_->screenHeight,
 		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 
-	glContext_ = SDL_GL_CreateContext(window_);
-	if (!glContext_)
+	if (!wc_->sdlWindow)
 	{
-		LOG(ERR, "Failed to create OpenGL context: " + std::string(SDL_GetError()));
-	}
-
-	// Enable V-Sync
-	if (SDL_GL_SetSwapInterval(1) < 0)
-	{
-		LOG(WARN, "Failed to set V-Sync: " + std::string(SDL_GetError()));
-	}
-
-	// Load OpenGL function pointers using GLAD
-	if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)))
-	{
-		LOG(ERR, "Failed to initialize GLAD.");
+		LOG(ERR, "Failed to create SDL window: " + std::string(SDL_GetError()));
 		return false;
 	}
 
-	// Log OpenGL version
-	const GLubyte* version = glGetString(GL_VERSION);
-	LOG(INFO, "OpenGL Version: " + std::string(reinterpret_cast<const char*>(version)));
+	// Create the OpenGL context using SDL
+	wc_->sdlContext = SDL_GL_CreateContext(wc_->sdlWindow);
+	if (!wc_->sdlContext)
+	{
+		LOG(ERR, "Failed to create OpenGL context: " + std::string(SDL_GetError()));
+		return false;
+	}
 
-	// Set initial viewport size
+	if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress))
+	{
+		LOG(ERR, "Failed to initialize GLAD");
+		return false;
+	}
+
+	// Enable V-Sync
+	if (SDL_GL_SetSwapInterval(1) != 0)
+	{
+		LOG(WARN, "Warning: Unable to set V-Sync: " + std::string(SDL_GetError()));
+	}
+
 	glViewport(0, 0, wc_->screenWidth, wc_->screenHeight);
-
 	return true;
 }
 
@@ -83,12 +74,14 @@ void OpenGLMain::FramebufferSizeCallback(Platform::WindowContext* window, int wi
 
 void OpenGLMain::Render() const
 {
-	// Clear the screen with a color
-	glClear(GL_COLOR_BUFFER_BIT);
+	// Set the clear color before clearing the screen
 	glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
+	// Clear the screen with the set color
+	glClear(GL_COLOR_BUFFER_BIT);
+
 	// Present the back buffer (swap the buffers)
-	SDL_GL_SwapWindow(window_);
+	SDL_GL_SwapWindow(wc_->sdlWindow);
 }
 
 void OpenGLMain::RenderLoop() const
@@ -96,25 +89,28 @@ void OpenGLMain::RenderLoop() const
 	bool running = true;
 	SDL_Event event;
 
-	// Main loop
+	// Main rendering loop
 	while (running)
 	{
-		// Event processing
+		// Poll events (e.g., window close, resize, etc.)
 		while (SDL_PollEvent(&event))
 		{
 			if (event.type == SDL_EVENT_QUIT)
 			{
 				running = false;
 			}
-			else if (event.type == SDL_EVENT_WINDOW_RESIZED)
+
+			// Handle window resize events
+			if (event.type == SDL_EVENT_WINDOW_RESIZED)
 			{
-				int width = event.window.data1;
-				int height = event.window.data2;
-				FramebufferSizeCallback(wc_, width, height);
+				int newWidth = event.window.data1;
+				int newHeight = event.window.data2;
+				glViewport(0, 0, newWidth, newHeight);  // Update the viewport when the window is resized
 			}
 		}
 
-		// Rendering
+		// Render the scene
 		Render();
 	}
 }
+

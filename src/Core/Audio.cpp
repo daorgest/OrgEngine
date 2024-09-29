@@ -35,7 +35,7 @@ void Audio::LoadSound(const std::filesystem::path& filePath)
 {
     if (!exists(filePath))
     {
-        throw std::runtime_error("File not found: " + filePath.string());
+        return;
     }
 
     FMOD::Sound* sound = nullptr;

@@ -3,24 +3,24 @@
 //
 
 #pragma once
-#include <glad/glad.h>
-#include <SDL3/SDL.h>
+
 #include "../../Platform/WindowContext.h"
+
+#include <SDL3/SDL.h>
+#include <glad/glad.h>
 namespace GraphicsAPI::OpenGL
 {
 	class OpenGLMain
 	{
 	public:
-		OpenGLMain(Platform::WindowContext* wc);
+		explicit OpenGLMain(Platform::WindowContext* wc);
 		~OpenGLMain();
-		bool Init();
+
+		bool Init() const;
 		void FramebufferSizeCallback(Platform::WindowContext* window, int width, int height) const;
 		void Render() const;
 		void RenderLoop() const;
 	private:
-		Platform::WindowContext* wc_{};
-		SDL_Window* window_{};
-
-		SDL_GLContext glContext_;
+		Platform::WindowContext* wc_;
 	};
 }

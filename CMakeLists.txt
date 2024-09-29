@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Renderer selection options (only one should be TRUE)
-option(USE_DIRECTX11 "Use DirectX 11 Renderer" ON)
-option(USE_VULKAN "Use Vulkan Renderer" OFF)
+option(USE_DIRECTX11 "Use DirectX 11 Renderer" OFF)
+option(USE_VULKAN "Use Vulkan Renderer" ON)
 option(USE_OPENGL "Use OpenGL Renderer" OFF)
 
 # Ensure only one renderer is enabled
@@ -47,29 +47,27 @@ if(MSVC)
   target_compile_options(OrgEngine PRIVATE /MP)
 endif()
 
-# Include directories
-target_include_directories(OrgEngine PRIVATE
-        "${CMAKE_SOURCE_DIR}/src"
-)
-
 # Source files
-file(GLOB_RECURSE SOURCE_FILES
-        "${CMAKE_SOURCE_DIR}/src/Platform/*.cpp"
-        "${CMAKE_SOURCE_DIR}/src/Game/*.cpp"
-        "${CMAKE_SOURCE_DIR}/src/Core/*.cpp"
-        "${CMAKE_SOURCE_DIR}/src/Renderer/ResourceLoader.cpp"
+file(GLOB_RECURSE GENERAL_SOURCE_FILES
+        "${CMAKE_SOURCE_DIR}/src/Platform/*.*"
+        "${CMAKE_SOURCE_DIR}/src/Game/*.*"
+        "${CMAKE_SOURCE_DIR}/src/Core/*.*"
+        "${CMAKE_SOURCE_DIR}/src/Renderer/ResourceLoader.*"
 )
-target_sources(OrgEngine PRIVATE ${SOURCE_FILES})
+target_sources(OrgEngine PRIVATE ${GENERAL_SOURCE_FILES})
 
-# Add renderer-specific source files
+# Renderer-specific source files and definitions
 if(USE_VULKAN)
-  file(GLOB_RECURSE VULKAN_SOURCES "${CMAKE_SOURCE_DIR}/src/Renderer/Vulkan/*.cpp")
-  target_sources(OrgEngine PRIVATE ${VULKAN_SOURCES})
+  file(GLOB_RECURSE RENDERER_SOURCES "${CMAKE_SOURCE_DIR}/src/Renderer/Vulkan/*.*")
+  target_compile_definitions(OrgEngine PRIVATE VULKAN_BUILD VK_USE_PLATFORM_WIN32_KHR)
 elseif(USE_OPENGL)
-  target_sources(OrgEngine PRIVATE
-          "${CMAKE_SOURCE_DIR}/src/Renderer/OpenGL/OpenGLMain.cpp"
-  )
+  file(GLOB_RECURSE RENDERER_SOURCES "${CMAKE_SOURCE_DIR}/src/Renderer/OpenGL/*.*")
+  target_compile_definitions(OrgEngine PRIVATE OPENGL_BUILD)
+elseif(USE_DIRECTX11)
+  file(GLOB_RECURSE RENDERER_SOURCES "${CMAKE_SOURCE_DIR}/src/Renderer/DirectX11/*.*")
+  target_compile_definitions(OrgEngine PRIVATE DIRECTX11_BUILD)
 endif()
+target_sources(OrgEngine PRIVATE ${RENDERER_SOURCES})
 
 # Organize source files into filters/groups for IDEs
 function(assign_source_groups)
@@ -81,10 +79,8 @@ function(assign_source_groups)
   endforeach()
 endfunction()
 
-assign_source_groups(${SOURCE_FILES})
-if(USE_VULKAN)
-  assign_source_groups(${VULKAN_SOURCES})
-endif()
+assign_source_groups(${GENERAL_SOURCE_FILES})
+assign_source_groups(${RENDERER_SOURCES})
 
 # Find and link Vulkan if enabled
 if(USE_VULKAN)
@@ -107,6 +103,11 @@ add_subdirectory(libs/3rdParty/fmt)
 add_subdirectory(libs/3rdParty/glm)
 add_subdirectory(libs/3rdParty/fastgltf)
 add_subdirectory(libs/3rdParty/fmod)
+if(USE_VULKAN)
+  add_subdirectory(libs/3rdParty/vma)
+  add_subdirectory(libs/3rdParty/vk-bootstrap)
+  target_link_libraries(OrgEngine PRIVATE GPUOpen::VulkanMemoryAllocator vk-bootstrap)
+endif()
 
 # ImGui integration
 set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/libs/3rdParty/imgui")
@@ -131,24 +132,18 @@ target_include_directories(OrgEngine PRIVATE "${IMGUI_DIR}")
 target_sources(OrgEngine PRIVATE ${IMGUI_SOURCES})
 assign_source_groups(${IMGUI_SOURCES})
 
-# Vulkan configuration
-if(USE_VULKAN)
-  # Add Vulkan-related libraries
-  add_subdirectory(libs/3rdParty/vk-bootstrap)
-  add_subdirectory(libs/3rdParty/vma)
-  target_include_directories(OrgEngine PRIVATE
-          "${CMAKE_SOURCE_DIR}/libs/3rdParty/vma/"
-  )
-  target_link_libraries(OrgEngine PRIVATE
-          vk-bootstrap::vk-bootstrap
-          GPUOpen::VulkanMemoryAllocator
-  )
-endif()
-
 # OpenGL configuration
 if(USE_OPENGL)
   # Add SDL3
   add_subdirectory(libs/3rdParty/sdl3 EXCLUDE_FROM_ALL)
+  if(WIN32)
+    add_custom_command(
+            TARGET OrgEngine POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy $<TARGET_FILE:SDL3::SDL3-shared> $<TARGET_FILE_DIR:OrgEngine>
+            VERBATIM
+    )
+  endif()
+
   # Find and add GLAD sources
   file(GLOB GLAD_SOURCES "${CMAKE_SOURCE_DIR}/libs/3rdParty/glad/src/glad.c")
   target_sources(OrgEngine PRIVATE ${GLAD_SOURCES})
@@ -158,12 +153,12 @@ if(USE_OPENGL)
           "${CMAKE_SOURCE_DIR}/libs/3rdParty/glad/include"
   )
   # Link OpenGL and SDL libraries
-  target_link_libraries(OrgEngine PRIVATE opengl32 SDL3::SDL3)
+  target_link_libraries(OrgEngine PRIVATE SDL3::SDL3)
 endif()
+
 
 # Link additional libraries
 target_link_libraries(OrgEngine PRIVATE
-        xinput
         Tracy::TracyClient
         fmt::fmt
         glm::glm-header-only

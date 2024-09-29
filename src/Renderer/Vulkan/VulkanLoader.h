@@ -2,6 +2,7 @@
 // Created by Orgest on 7/18/2024.
 //
 #pragma once
+#ifdef VULKAN_BUILD
 #include "../ResourceLoader.h"
 #include "VulkanHeader.h"
 
@@ -39,3 +40,4 @@ namespace GraphicsAPI::Vulkan
 
 	};
 } // namespace GraphicsAPI::Vulkan
+#endif

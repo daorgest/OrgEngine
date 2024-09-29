@@ -3,23 +3,23 @@
 //
 
 #pragma once
+#include <cstdint>
 
 // Unsigned Integers
-using u8  = unsigned char;
-using u16 = unsigned short;
-using u32 = unsigned int;
-using u64 = unsigned long long;
-
-constexpr u8  u8_invalid_id  { 0xFF };
-constexpr u16 u16_invalid_id { 0xFFFF };
-constexpr u32 u32_invalid_id { 0xFFFFFFFF };
-constexpr u64 u64_invalid_id { 0xFFFFFFFFFFFFFFFF };
+using u8  = std::uint8_t;
+using u16 = std::uint16_t;
+using u32 = std::uint32_t;
+using u64 = std::uint64_t;
 
 // Signed Integers
-using i8  = signed char;
-using i16 = signed short;
-using i32 = signed int;
-using i64 = signed long long;
+using i8  = std::int8_t;
+using i16 = std::int16_t;
+using i32 = std::int32_t;
+using i64 = std::int64_t;
+
+// Float
+using f32 = float;
+using f64 = double;
 
 // Float
 using f32 = float;

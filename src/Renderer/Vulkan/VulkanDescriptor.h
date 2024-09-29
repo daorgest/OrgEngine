@@ -2,8 +2,7 @@
 // Created by Orgest on 7/21/2024.
 //
 
-#ifndef VULKANDESCRIPTOR_H
-#define VULKANDESCRIPTOR_H
+#ifdef VULKAN_BUILD
 
 #pragma once
 
@@ -72,4 +71,4 @@ namespace GraphicsAPI::Vulkan
 
 } // namespace GraphicsAPI::Vulkan
 
-#endif // VULKANDESCRIPTOR_H
+#endif

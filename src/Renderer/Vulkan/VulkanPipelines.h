@@ -3,6 +3,7 @@
 //
 
 #pragma once
+#ifdef VULKAN_BUILD
 #include <vector>
 #include <vulkan/vulkan.h>
 namespace GraphicsAPI::Vulkan
@@ -62,3 +63,4 @@ namespace GraphicsAPI::Vulkan
 		PipelineBuilder& EnableBlendingAlphaBlend();
 	};
 }
+#endif

@@ -12,7 +12,7 @@ namespace Platform
     class Win32
     {
     public:
-        explicit Win32(WindowContext* windowContext);
+        explicit Win32(WindowContext* windowContext, const std::wstring& platName = L" - Windows");
         ~Win32();
         bool Init() const;
         static double GetAbsoluteTime();

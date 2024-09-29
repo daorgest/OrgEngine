@@ -1,17 +1,16 @@
 #include "PlatformWindows.h"
-
+#ifdef VULKAN_BUILD
 #include <dwmapi.h>
 
 #include "../Core/Timer.h"
-#ifdef VULKAN_BUILD
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace Platform
 {
 
-    Win32::Win32(WindowContext* wc) : wc_(wc)
+    Win32::Win32(WindowContext* windowContext, const std::wstring& platName) : wc_(windowContext)
     {
-        Init();
+    	wc_->appName += platName;
     }
 
     Win32::~Win32()
@@ -82,7 +81,7 @@ namespace Platform
             0,
             appName_,
 #ifdef DEBUG
-            L"OrgEngine - Debug",
+            wc_->appName.c_str(),
 #else
             L"OrgEngine - Release",
 #endif

@@ -1,10 +1,9 @@
 //
 // Created by Orgest on 7/27/2024.
 //
+#pragma once
 
-#ifndef VULKANMATERIALS_H
-#define VULKANMATERIALS_H
-
+#ifdef VULKAN_BUILD
 #include "VulkanDescriptor.h"
 #include "VulkanLoader.h"
 #include "VulkanPipelines.h"
@@ -64,4 +63,4 @@ namespace GraphicsAPI::Vulkan
 		);
 	};
 }
-#endif //VULKANMATERIALS_H
+#endif

@@ -3,7 +3,7 @@
 //
 
 #pragma once
-
+#ifdef VULKAN_BUILD
 #include <deque>
 #include <functional>
 #include <memory>
@@ -111,3 +111,4 @@ namespace GraphicsAPI::Vulkan
 	};
 
 }
+#endif
