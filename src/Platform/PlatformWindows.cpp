@@ -35,7 +35,6 @@ namespace Platform
         case WM_LBUTTONDOWN:
         case WM_LBUTTONUP:
         case WM_RBUTTONDOWN:
-        	case WM_
         case WM_RBUTTONUP:
             break;
         case WM_SETFOCUS:
