@@ -35,6 +35,7 @@ namespace Platform
         case WM_LBUTTONDOWN:
         case WM_LBUTTONUP:
         case WM_RBUTTONDOWN:
+        	case WM_
         case WM_RBUTTONUP:
             break;
         case WM_SETFOCUS:
@@ -42,9 +43,6 @@ namespace Platform
             break;
         case WM_KILLFOCUS:
             LOG(INFO, "Window out of focus");
-            break;
-        case WM_CLOSE:
-            PostQuitMessage(0);
             break;
         default:
             rez = DefWindowProc(hwnd, msg, wp, lp);
@@ -80,12 +78,8 @@ namespace Platform
         wc_->hwnd = CreateWindowEx(
             0,
             appName_,
-#ifdef DEBUG
             wc_->appName.c_str(),
-#else
-            L"OrgEngine - Release",
-#endif
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            WS_OVERLAPPEDWINDOW,
             wc_->windowPosX,
             wc_->windowPosY,
             static_cast<i32>(wc_->screenWidth),
@@ -106,13 +100,6 @@ namespace Platform
             MessageBox(nullptr, L"Failed to create window.", L"Error", MB_OK | MB_ICONERROR);
             return false;
         }
-
-        ShowWindow(wc_->hwnd, SW_SHOW);
-        SetForegroundWindow(wc_->hwnd);
-        SetFocus(wc_->hwnd);
-        UpdateWindow(wc_->hwnd);
-
-        LOG(INFO, "Window created successfully.");
         return true;
     }
 

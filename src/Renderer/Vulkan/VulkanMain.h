@@ -4,9 +4,9 @@
 #pragma once
 #ifdef VULKAN_BUILD
 
-#include "VulkanInitializers.h"
 #include "VulkanDescriptor.h"
 #include "VulkanHeader.h"
+#include "VulkanInitializers.h"
 #include "VulkanLoader.h"
 #include "VulkanMaterials.h"
 #include "VulkanSceneNode.h"
@@ -79,13 +79,13 @@ namespace GraphicsAPI::Vulkan
 		VkCommandBuffer mainCommandBuffer_{};
 
 		DeletionQueue deletionQueue_;
-		VkDescriptor frameDescriptors_;
+		DescriptorAllocatorGrowable frameDescriptors_;
 	};
 
 	class VkEngine
 	{
 	public:
-		explicit VkEngine(Platform::WindowContext* winManager);
+		explicit VkEngine(Platform::WindowContext* winManager, const std::wstring& renderName = L" - Vulkan");
 		~VkEngine();
 
 		void Run();
@@ -97,7 +97,7 @@ namespace GraphicsAPI::Vulkan
 		void InitVulkan();
 		void InitCommands();
 		void InitializeCommandPoolsAndBuffers();
-		void InitSwapChain();
+		void InitSwapchain();
 		void InitSyncStructures();
 		void InitDescriptors();
 		void InitPipelines();
@@ -131,11 +131,11 @@ namespace GraphicsAPI::Vulkan
 		void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout,
 		                     VkImageLayout newLayout) const;
 		[[nodiscard]] static VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask);
-		void ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
+		void ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) const;
 
 		// Swapchain Management
 		void CreateSwapchain(u32 width, u32 height);
-		[[nodiscard]] VkExtent3D getScreenResolution() const;
+		[[nodiscard]] VkExtent3D GetScreenResolution() const;
 		void DestroySwapchain() const;
 
 		// Textures
@@ -149,12 +149,19 @@ namespace GraphicsAPI::Vulkan
 		static void PrintAvailableExtensions();
 		static std::string decodeDriverVersion(u32 driverVersion, u32 vendorID);
 
+		// Draw resources
+		AllocatedImage drawImage_{};
+		AllocatedImage depthImage_{};
+		AllocatedImage whiteImage_{};
+		AllocatedImage blackImage_{};
+		AllocatedImage greyImage_{};
+		AllocatedImage errorCheckerboardImage_{};
+
 		VkDescriptorSetLayout gpuSceneDataDescriptorLayout_{};
 		VkFormat swapchainImageFormat_;
-		AllocatedImage depthImage_{};
 
-		DrawContext mainDrawContext{};
-		std::unordered_map<std::string, std::shared_ptr<Node>> loadNodes;
+		DrawContext mainDrawContext;
+		std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
 		void UpdateScene();
 
 
@@ -164,8 +171,11 @@ namespace GraphicsAPI::Vulkan
 		bool isInit = false;
 
 	private:
+
+		std::wstring renderName = L" - Vulkan";
 		bool stopRendering_ = false;
 		bool resizeRequested_ = false;
+		bool windowShown = false;
 		float renderScale = 1.0f;
 		float spacing = 5.0f;
 		float fps_ = 0.0f;
@@ -174,6 +184,13 @@ namespace GraphicsAPI::Vulkan
 		float timeSinceLastFPSUpdate_ = 0.0f;
 		const float fpsUpdateInterval_ = 1.0f; // Update FPS every 1 second
 		bool meshLoaded_ = false;
+
+		// UI visibility flags
+		bool showQuickStats_ = true;
+		bool showMemoryUsage_ = true;
+		bool modelDrawn = true;
+
+		float aspectRatio = 16.0f / 9.0f;
 
 		Platform::WindowContext* windowContext_;
 		VulkanData vd;
@@ -197,20 +214,13 @@ namespace GraphicsAPI::Vulkan
 		FrameData& GetCurrentFrame() { return frames_[frameNumber_ % FRAME_OVERLAP]; }
 		int frameNumber_{0};
 
-		// Draw resources
-		AllocatedImage drawImage_{};
-		AllocatedImage whiteImage_{};
-		AllocatedImage blackImage_{};
-		AllocatedImage greyImage_{};
-		AllocatedImage errorCheckerboardImage_{};
-
 		VkSampler defaultSamplerLinear_{};
 		VkSampler defaultSamplerNearest_{};
 
 		VkExtent2D drawExtent_{};
 
 		// Descriptor-related members
-		VkDescriptor globalDescriptorAllocator{};
+		DescriptorAllocatorGrowable globalDescriptorAllocator{};
 		VkDescriptorSet drawImageDescriptors_{};
 		VkDescriptorSetLayout drawImageDescriptorLayout_{};
 		VkDescriptorSetLayout singleImageDescriptorLayout_{};
@@ -256,8 +266,8 @@ namespace GraphicsAPI::Vulkan
 		// Deletion queue
 		DeletionQueue mainDeletionQueue_;
 
-		ComputeEffect gradient;
-		ComputeEffect sky;
+		ComputeEffect gradient{};
+		ComputeEffect sky{};
 	};
 } // namespace GraphicsAPI::Vulkan
 

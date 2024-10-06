@@ -32,11 +32,16 @@ namespace Platform
 		// SDL3-specific fields for OpenGL
 		SDL_Window* sdlWindow = nullptr;    // SDL window handle
 		SDL_GLContext sdlContext = nullptr; // SDL OpenGL context
+		u64 lastTime = 0; // Last recorded time in milliseconds (for delta time)
 #else
 		// Win32-specific fields for Vulkan
 		HWND hwnd{};             // Handle to the window (Vulkan/Win32 specific)
 		HINSTANCE hInstance{};    // Handle to the application instance (Win32 specific)
 		bool needsSwapchainRecreation = false;
+
+		// Timer variables for Win32 (for delta time)
+		LARGE_INTEGER lastTime{};
+		LARGE_INTEGER frequency{};
 #endif
 
 		explicit WindowContext(u32 width = 0, u32 height = 0, std::wstring name = L"OrgEngine - Debug")
@@ -44,22 +49,13 @@ namespace Platform
 		{
 			// Initialize screen dimensions based on the platform
 #ifdef OPENGL_BUILD
-			// SDL_DisplayID displayID = SDL_GetPrimaryDisplay();
-			// const SDL_DisplayMode* displayMode = SDL_GetDesktopDisplayMode(displayID);
-			//
-			// if (displayMode)
-			// {
-			// 	screenWidth = displayMode->w;
-			// 	screenHeight = displayMode->h;
-			// }
-			// else
-			// {
-			// 	LOG(ERR, "Failed to get desktop display mode: " + std::string(SDL_GetError()));
-			// }
-
+			lastTime = SDL_GetTicks64(); // Initialize SDL timer
+#else
+			QueryPerformanceFrequency(&frequency);  // Initialize high-resolution timer for Win32
+			QueryPerformanceCounter(&lastTime);     // Set initial time
 #endif
-			windowPosX = (screenWidth - screenWidth) / 2;  // Center by default
-			windowPosY = (screenHeight - screenHeight) / 2; // Center by default
+			// windowPosX = (screenWidth - screenWidth) / 2;  // Center by default
+			// windowPosY = (screenHeight - screenHeight) / 2; // Center by default
 		}
 
 		// Method to get the current window size
@@ -125,6 +121,37 @@ namespace Platform
 		void UpdateDimensions()
 		{
 			GetWindowSize(screenWidth, screenHeight);
+		}
+
+		// Method to get delta time (time elapsed since the last frame) for Win32
+		float GetDeltaTimeWin32()
+		{
+#ifndef OPENGL_BUILD
+			LARGE_INTEGER currentTime;
+			QueryPerformanceCounter(&currentTime);
+
+			// Calculate delta time in seconds
+			float deltaTime = static_cast<float>(currentTime.QuadPart - lastTime.QuadPart) / frequency.QuadPart;
+			lastTime = currentTime; // Update lastTime to current time for next frame
+
+			return deltaTime;
+#else
+			return 0.0f;
+#endif
+		}
+
+		// Method to get delta time for SDL
+		float GetDeltaTimeSDL()
+		{
+#ifdef OPENGL_BUILD
+			u64 currentTime = SDL_GetTicks64();
+			float deltaTime = (currentTime - lastTime) / 1000.0f; // Convert milliseconds to seconds
+			lastTime = currentTime; // Update lastTime to current time for next frame
+
+			return deltaTime;
+#else
+			return 0.0f;
+#endif
 		}
 	};
 }  // namespace Platform

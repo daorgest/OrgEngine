@@ -54,7 +54,7 @@ void Application::CleanupEngine()
 #ifdef VULKAN_BUILD
     vkEngine_.Cleanup();
 #elif defined(OPENGL_BUILD)
-    // glEngine_.Cleanup();
+    glEngine_.Cleanup();
 #endif
 }
 
@@ -65,6 +65,10 @@ void Application::Run()
         LOG(ERR, "Engine not initialized. Exiting...");
         return;
     }
+
+	ShowWindow(windowContext_.hwnd, SW_SHOW);
+	SetForegroundWindow(windowContext_.hwnd);
+	SetFocus(windowContext_.hwnd);
 
 #ifdef VULKAN_BUILD
     vkEngine_.Run();
@@ -78,6 +82,10 @@ void Application::HandleInput(Input& input)
     // Update the controller usage status
     input.updateUsingController();
 
+	for (auto& controller : input.controllers)
+	{
+		controller.Update();
+	}
     // Generalized input handler
     HandleControllerInput(input);
     HandleKeyboardAndMouseInput(input);
@@ -110,7 +118,7 @@ void Application::HandleKeyboardAndMouseInput(Input& input)
     }
 
     // Check if the left mouse button is pressed
-    if (input.isMouseButtonPressed(input.lMouseButton))
+    if (Input::isMouseButtonPressed(input.lMouseButton))
     {
         LOG(INFO, "The left mouse button has been pressed.");
     }

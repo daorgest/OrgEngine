@@ -24,6 +24,8 @@ namespace GraphicsAPI::Vulkan
 		MaterialPipeline opaquePipeline{};
 		MaterialPipeline transparentPipeline{};
 
+		MaterialInstance data;
+
 		VkDescriptorSetLayout materialLayout{ VK_NULL_HANDLE };  // Descriptor set layout for material resources
 
 		// Constants used in the material (uniform buffer)
@@ -59,7 +61,7 @@ namespace GraphicsAPI::Vulkan
 		    VkDevice device,
 		    MaterialPass pass,
 		    const MaterialResources& resources,
-		    VkDescriptor& descriptorAllocator
+		    DescriptorAllocatorGrowable& descriptorAllocator
 		);
 	};
 }

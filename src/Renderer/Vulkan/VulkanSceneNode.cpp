@@ -3,27 +3,26 @@
 //
 
 #include "VulkanSceneNode.h"
-
 #include "VulkanLoader.h"
-#include "VulkanMaterials.h"
 
 using namespace GraphicsAPI::Vulkan;
 
+// Implementation of Node::RefreshTransform
 void Node::RefreshTransform(const glm::mat4& parentMatrix)
 {
 	worldTransform = parentMatrix * localTransform;
-	for (const auto& child : children)
+	for (auto& child : children)
 	{
 		child->RefreshTransform(worldTransform);
 	}
 }
 
+// Implementation of Node::Draw
 void Node::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
 {
-	// draw children
-	for (const auto& c : children)
+	for (auto& child : children)
 	{
-		c->Draw(topMatrix, ctx);
+		child->Draw(topMatrix, ctx);
 	}
 }
 
@@ -39,14 +38,15 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
 			.indexCount = s.count,
 			.firstIndex = s.startIndex,
 			.indexBuffer = mesh->meshBuffers.indexBuffer.buffer,
-			// .material = &s.material->data,
+			.material = &s.material->data,
 			.transform = nodeMatrix,
 			.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress
 		};
 
+		// Add render object to opaque surfaces
 		ctx.OpaqueSurfaces.push_back(def);
 	}
 
-	// Recurse down
+	// Recursively call Draw on child nodes
 	Node::Draw(topMatrix, ctx);
 }

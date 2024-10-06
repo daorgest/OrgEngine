@@ -48,7 +48,7 @@ namespace GraphicsAPI::Vulkan
 
 		static void Clear(PipelineData& data);
 
-		VkPipeline BuildPipeline(VkDevice device, const PipelineData& data);
+		VkPipeline       BuildPipeline(VkDevice device, const PipelineData& data);
 		PipelineBuilder& SetShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader);
 		PipelineBuilder& SetInputTopology(VkPrimitiveTopology topology);
 		PipelineBuilder& SetPolygonMode(VkPolygonMode mode);
@@ -61,6 +61,7 @@ namespace GraphicsAPI::Vulkan
 		PipelineBuilder& EnableDepthTest(bool depthWriteEnable, VkCompareOp op);
 		PipelineBuilder& EnableBlendingAdditive();
 		PipelineBuilder& EnableBlendingAlphaBlend();
+		PipelineBuilder& Layout(VkPipelineLayout& layout);
 	};
 }
 #endif

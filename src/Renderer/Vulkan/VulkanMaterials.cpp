@@ -12,14 +12,14 @@ using namespace GraphicsAPI::Vulkan;
 void GLTFMetallicRoughness::BuildPipelines(VkEngine* engine, VkDevice device)
 {
     // Load vertex and fragment shaders
-    VkShaderModule meshFragShader = VK_NULL_HANDLE;
+    VkShaderModule meshFragShader;
     if (!LoadShader("shaders/mesh.frag.spv", device, &meshFragShader))
     {
         LOG(ERR, "Error loading fragment shader module");
         return;
     }
 
-    VkShaderModule meshVertexShader = VK_NULL_HANDLE;
+    VkShaderModule meshVertexShader;
     if (!LoadShader("shaders/mesh.vert.spv", device, &meshVertexShader))
     {
         LOG(ERR, "Error loading vertex shader module");
@@ -28,7 +28,8 @@ void GLTFMetallicRoughness::BuildPipelines(VkEngine* engine, VkDevice device)
     }
 
     // Define push constant range
-    VkPushConstantRange matrixRange{
+    VkPushConstantRange matrixRange
+	{
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
         .offset = 0,
         .size = sizeof(GPUDrawPushConstants)
@@ -58,16 +59,17 @@ void GLTFMetallicRoughness::BuildPipelines(VkEngine* engine, VkDevice device)
 
     // Build the pipelines
     PipelineBuilder pipelineBuilder;
-    pipelineBuilder.SetShaders(meshVertexShader, meshFragShader);
-    pipelineBuilder.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-    pipelineBuilder.SetPolygonMode(VK_POLYGON_MODE_FILL);
-    pipelineBuilder.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    pipelineBuilder.SetMultisamplingNone();
-    pipelineBuilder.DisableBlending();
-    pipelineBuilder.EnableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-    pipelineBuilder.SetColorAttachmentFormat(engine->swapchainImageFormat_);
-    pipelineBuilder.SetDepthFormat(engine->depthImage_.imageFormat);
-	pipelineBuilder.data.config.layout = newLayout;
+	pipelineBuilder
+		.SetShaders(meshVertexShader, meshFragShader)
+		.SetInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+		.SetPolygonMode(VK_POLYGON_MODE_FILL)
+		.SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
+		.SetMultisamplingNone()
+		.DisableBlending()
+		.EnableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+		.SetColorAttachmentFormat(engine->swapchainImageFormat_)
+		.SetDepthFormat(engine->depthImage_.imageFormat)
+		.Layout(newLayout);
 
     // Build opaque pipeline
     opaquePipeline.pipeline = pipelineBuilder.BuildPipeline(device, pipelineBuilder.data);
@@ -82,7 +84,7 @@ void GLTFMetallicRoughness::BuildPipelines(VkEngine* engine, VkDevice device)
     vkDestroyShaderModule(device, meshVertexShader, nullptr);
 }
 
-MaterialInstance GLTFMetallicRoughness::WriteMaterial(VkDevice device, MaterialPass pass, const MaterialResources& resources, VkDescriptor& descriptorAllocator)
+MaterialInstance GLTFMetallicRoughness::WriteMaterial(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator)
 {
 	// Initialize the material instance with the correct pipeline based on pass type
 	MaterialInstance matData

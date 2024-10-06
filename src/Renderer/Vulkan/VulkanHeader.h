@@ -11,8 +11,8 @@
 #include <span>
 #include <string>
 #include <utility>
-#include <vector>
 #include "../../Core/Array.h"
+#include "../../Core/Vector.h"
 #include "../../Platform/WindowContext.h"
 
 #include <backends/imgui_impl_vulkan.h>
@@ -25,28 +25,33 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
+#ifdef DEBUG
 #define VK_CHECK(x)                                                                                                    \
-	do                                                                                                                 \
-	{                                                                                                                  \
-		VkResult err = x;                                                                                              \
-		if (err)                                                                                                       \
-		{                                                                                                              \
-			fmt::print("Detected Vulkan error: {}", string_VkResult(err));                                             \
-			abort();                                                                                                   \
-		}                                                                                                              \
-	}                                                                                                                  \
-	while (0)
+    do                                                                                                                 \
+    {                                                                                                                  \
+        VkResult err = x;                                                                                              \
+        if (err != VK_SUCCESS)                                                                                         \
+        {                                                                                                              \
+            fmt::print("Vulkan error at {}:{}: {}\n", __FILE__, __LINE__, string_VkResult(err));                      \
+            abort();                                                                                                   \
+        }                                                                                                              \
+    }                                                                                                                  \
+    while (0)
+#else
+#define VK_CHECK(x) (x)
+#endif
+
 
 namespace GraphicsAPI::Vulkan
 {
 
 	struct VulkanData
 	{
-		VkInstance				 instance_{VK_NULL_HANDLE};
-		VkDebugUtilsMessengerEXT dbgMessenger_{VK_NULL_HANDLE};
-		VkPhysicalDevice		 physicalDevice_{VK_NULL_HANDLE};
-		VkDevice				 device_{VK_NULL_HANDLE};
-		VkSurfaceKHR			 surface_{VK_NULL_HANDLE};
+		VkInstance				 instance{VK_NULL_HANDLE};
+		VkDebugUtilsMessengerEXT dbgMessenger{VK_NULL_HANDLE};
+		VkPhysicalDevice		 physicalDevice{VK_NULL_HANDLE};
+		VkDevice				 device{VK_NULL_HANDLE};
+		VkSurfaceKHR			 surface{VK_NULL_HANDLE};
 	};
 
 	struct AllocatedBuffer
@@ -88,27 +93,5 @@ namespace GraphicsAPI::Vulkan
 		VkExtent3D	  imageExtent;
 		VkFormat	  imageFormat;
 	};
-
-	enum class MaterialPass : u8
-	{
-		MainColor,
-		Transparent,
-		Other
-	};
-
-	struct MaterialPipeline
-	{
-		VkPipeline pipeline;
-		VkPipelineLayout layout;
-	};
-
-	struct MaterialInstance
-	{
-		MaterialPipeline* pipeline{ nullptr };   // Pointer to the associated pipeline
-		VkDescriptorSet materialSet{ VK_NULL_HANDLE };   // Descriptor set for the material
-		MaterialPass passType;   // The type of material pass (MainColor, Transparent, etc.)
-		Vertex data;
-	};
-
 }
 #endif

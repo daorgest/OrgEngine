@@ -18,7 +18,8 @@ elseif(NOT (USE_VULKAN OR USE_DIRECTX11 OR USE_OPENGL))
 endif()
 
 # Define executable
-add_executable(OrgEngine)
+add_executable(OrgEngine
+        src/Core/Vector.h)
 
 # Platform and renderer-specific definitions
 target_compile_definitions(OrgEngine PRIVATE UNICODE _UNICODE NOMINMAX)

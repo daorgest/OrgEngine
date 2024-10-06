@@ -3,6 +3,7 @@
 #include "../Platform/PlatformWindows.h"
 #include "../Renderer/Vulkan/VulkanMain.h"
 #include "Application.h"
+#include "../Core/Vector.h"
 
 #ifdef _WIN32
 void InitConsole()
@@ -30,6 +31,27 @@ int main(int argc, char** argv)
  #endif
 
     Application app;
+	// Vector<int> lol;
+	//
+	// lol.PushBack(1);
+	// lol.PushBack(2);
+	// lol.PushBack(3);
+	// lol.PushBack(2);
+	// lol.PushBack(3);
+	// lol.PushBack(2);
+	// lol.PushBack(3);
+	// lol.PushBack(2);
+	// lol.PushBack(3);
+	// lol.PushBack(2);
+	// lol.PushBack(3);
+	// lol.PushBack(2);
+	// lol.PushBack(3);
+	//
+	// for (int i = 0; i < lol.Size(); i++)
+	// {
+	// 	LOG(INFO, "Itemms[", i ,"] " ,lol[i]);
+	// }
+
 	app.Run();
 
 	std::cin.get();

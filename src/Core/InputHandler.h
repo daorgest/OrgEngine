@@ -85,7 +85,7 @@ struct Controller
 struct Input
 {
     SafeArray<KeyboardButton, KeyboardButton::Keys::BUTTONS_COUNT> keyboard{};
-    SafeArray<Controller, 4> controllers{}; // assuming 4 controllers as max
+    SafeArray<Controller, 1> controllers{};
 
     int cursorX = 0;
     int cursorY = 0;

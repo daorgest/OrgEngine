@@ -70,16 +70,22 @@ VkPipeline PipelineBuilder::BuildPipeline(VkDevice device, const PipelineData& d
     VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicInfo = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = std::size(dynamicStates),
+        .dynamicStateCount = 2,
         .pDynamicStates = dynamicStates
     };
 
     pipelineInfo.pDynamicState = &dynamicInfo;
 
     VkPipeline pipeline;
-    VK_CHECK(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline));
-
-    return pipeline;
+	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline)
+	!= VK_SUCCESS)
+		{
+			fmt::println("failed to create pipeline");
+			return VK_NULL_HANDLE; // failed to create graphics pipeline
+		} else
+		{
+			return pipeline;
+		}
 }
 
 PipelineBuilder& PipelineBuilder::SetShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader)
@@ -209,6 +215,12 @@ PipelineBuilder& PipelineBuilder::EnableBlendingAlphaBlend()
 		.alphaBlendOp = VK_BLEND_OP_ADD,
 		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
 	};
+	return *this;
+}
+
+PipelineBuilder& PipelineBuilder::Layout(VkPipelineLayout& layout)
+{
+	data.config.layout = layout;
 	return *this;
 }
 
