@@ -20,7 +20,6 @@ endif()
 
 # Define executable
 add_executable(OrgEngine
-        src/Core/Memory.h
         src/Renderer/Camera.cpp
 )
 
@@ -38,9 +37,8 @@ endif()
 if(MSVC)
   # Release flags
   target_compile_options(OrgEngine PRIVATE
-          $<$<CONFIG:Release>:/O2 /DNDEBUG /Ot /GT /GL /arch:AVX2 /fp:fast /GR- /EHsc /Zc:inline>
+          $<$<CONFIG:Release>:/O2 /DNDEBUG /Ot>
   )
-  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG /OPT:REF /OPT:ICF")
 
   # Debug flags
   target_compile_options(OrgEngine PRIVATE
