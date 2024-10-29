@@ -6,7 +6,6 @@
 
 using namespace GraphicsAPI::Vulkan;
 
-
 VkCommandPoolCreateInfo VkInfo::CommandPoolInfo(u32 queueFamilyIndex, VkCommandPoolCreateFlags flags)
 {
 	return
@@ -101,23 +100,20 @@ VkSubmitInfo2 VkInfo::SubmitInfo(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubm
 	};
 }
 
-VkImageCreateInfo VkInfo::ImageInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent)
+VkImageCreateInfo VkInfo::ImageInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, u32 mipLevels)
 {
-	return
-	{
+	return {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.pNext = nullptr,
-		.flags = 0,  // No image creation flags by default
+		.flags = 0,
 		.imageType = VK_IMAGE_TYPE_2D,
 		.format = format,
 		.extent = extent,
-		.mipLevels = 1,
+		.mipLevels = mipLevels,
 		.arrayLayers = 1,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.tiling = VK_IMAGE_TILING_OPTIMAL,
-		.usage = usageFlags,
-		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,  // Assume single queue access
-		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED  // Start with undefined layout
+		.usage = usageFlags
 	};
 }
 
@@ -133,7 +129,6 @@ VkImageViewCreateInfo VkInfo::ImageViewInfo(VkFormat format, VkImage image, VkIm
 		.image = image,
 		.viewType = viewType,
 		.format = format,
-		.components = {VK_COMPONENT_SWIZZLE_IDENTITY},
 		.subresourceRange = {
 			.aspectMask = aspectFlags,
 			.baseMipLevel = 0,
@@ -202,7 +197,7 @@ VkRenderingInfo VkInfo::RenderInfo(VkExtent2D extent, VkRenderingAttachmentInfo*
 			.extent = extent
 		},
 		.layerCount = 1,
-		.viewMask = 0,  // No multiview
+		.viewMask = 0,  // No multiview,
 		.colorAttachmentCount = 1,  // Assuming one color attachment
 		.pColorAttachments = colorAttachment,
 		.pDepthAttachment = depthAttachment,
@@ -242,8 +237,7 @@ VkRenderingAttachmentInfo VkInfo::DepthAttachmentInfo(VkImageView view, VkImageL
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 		.clearValue = {
 			.depthStencil = {
-				.depth = 0.f,
-				.stencil = 0
+				.depth = 0.f
 			}
 		}
 	};

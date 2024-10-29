@@ -29,9 +29,10 @@ namespace GraphicsAPI::Vulkan
 									   VkSemaphoreSubmitInfo* waitSemaphoreInfo);
 
 		// Images
-		static VkImageCreateInfo ImageInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
+		static VkImageCreateInfo ImageInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent,
+			u32 mipLevels = 1);
 		static VkImageViewCreateInfo ImageViewInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags,
-			VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D);
+										   VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D);
 
 		// Pipelines
 		static VkPipelineShaderStageCreateInfo PipelineShaderStageInfo(VkShaderStageFlagBits stage,

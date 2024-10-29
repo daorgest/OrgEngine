@@ -2,6 +2,7 @@
 // Created by Orgest on 4/12/2024.
 //
 #pragma once
+
 #ifdef VULKAN_BUILD
 
 #include "VulkanDescriptor.h"
@@ -10,6 +11,8 @@
 #include "VulkanLoader.h"
 #include "VulkanMaterials.h"
 #include "VulkanSceneNode.h"
+#include "../Camera.h"
+#include "../../Core/InputHandler.h"
 
 // Vulkan Includes
 #include <tracy/TracyVulkan.hpp>
@@ -82,6 +85,16 @@ namespace GraphicsAPI::Vulkan
 		DescriptorAllocatorGrowable frameDescriptors_;
 	};
 
+	struct EngineStats
+	{
+		float frametime;
+		int triCout;
+		int drawcallCount;
+		float sceneUpdateTime;
+		float meshDrawtime;
+	};
+
+
 	class VkEngine
 	{
 	public:
@@ -92,22 +105,22 @@ namespace GraphicsAPI::Vulkan
 		void Cleanup();
 
 		// Initialization
-		bool Init();
-		void SetupDebugMessenger();
-		void InitVulkan();
-		void InitCommands();
-		void InitializeCommandPoolsAndBuffers();
-		void InitSwapchain();
-		void InitSyncStructures();
-		void InitDescriptors();
-		void InitPipelines();
-		void InitBackgroundPipelines();
-		void InitImgui();
-		void InitMeshPipeline();
-		void InitDefaultData();
+		bool        Init();
+		void        SetupDebugMessenger();
+		void        InitVulkan();
+		void        InitCommands();
+		void        InitializeCommandPoolsAndBuffers();
+		void        InitSwapchain();
+		void        InitSyncStructures();
+		void        InitDescriptors();
+		void        InitPipelines();
+		void        InitBackgroundPipelines();
+		void        InitImgui();
+		void        InitMeshPipeline();
+		void        InitDefaultData();
+		static void InitImguiStyles();
 		// Rendering
 		void Draw();
-		void ResizeSwapchain();
 		void DrawBackground(VkCommandBuffer cmd);
 		void DrawGeometry(VkCommandBuffer cmd);
 		void DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView);
@@ -117,37 +130,33 @@ namespace GraphicsAPI::Vulkan
 		void RenderQuickStatsImGui();
 
 		// Utility Functions
-		void CreateImageWithVMA(const VkImageCreateInfo& imageInfo, VkMemoryPropertyFlags memoryPropertyFlags,
-		                        VkImage& image, VmaAllocation& allocation) const;
-		static void CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize,
-		                             VkExtent2D dstSize);
 		AllocatedBuffer CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 		void DestroyBuffer(const AllocatedBuffer& buffer) const;
 		void CleanupAlloc();
 		GPUMeshBuffers UploadMesh(std::span<u32> indices, std::span<Vertex> vertices);
-		VkDeviceAddress GetBufferDeviceAddress(VkBuffer buffer) const;
+		static VkDeviceAddress GetBufferDeviceAddress(VkBuffer buffer);
 		void* MapBuffer(const AllocatedBuffer& buffer);
 		void UnmapBuffer(const AllocatedBuffer& buffer);
-		void TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout,
-		                     VkImageLayout newLayout) const;
-		[[nodiscard]] static VkImageSubresourceRange ImageSubresourceRange(VkImageAspectFlags aspectMask);
 		void ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) const;
+		static void SetViewportAndScissor(VkCommandBuffer cmd, const VkExtent2D& extent);
 
 		// Swapchain Management
 		void CreateSwapchain(u32 width, u32 height);
+		void ResizeSwapchain();
 		[[nodiscard]] VkExtent3D GetScreenResolution() const;
 		void DestroySwapchain() const;
 
 		// Textures
-		AllocatedImage CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-		AllocatedImage CreateImageData(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage,
-		                               bool mipmapped = false);
-		void DestroyImage(const AllocatedImage& img);
+		AllocatedImage CreateImageData(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 
-		// Static Utility Functions
+		// More utility functions
 		static void CreateSurfaceWin32(HINSTANCE hInstance, HWND hwnd, VulkanData& vd);
 		static void PrintAvailableExtensions();
 		static std::string decodeDriverVersion(u32 driverVersion, u32 vendorID);
+
+		void UpdateScene();
+
+		VmaAllocator allocator_;
 
 		// Draw resources
 		AllocatedImage drawImage_{};
@@ -160,64 +169,64 @@ namespace GraphicsAPI::Vulkan
 		VkDescriptorSetLayout gpuSceneDataDescriptorLayout_{};
 		VkFormat swapchainImageFormat_;
 
+		VkSampler defaultSamplerLinear_{};
+		VkSampler defaultSamplerNearest_{};
+
+		// Materials
+		MaterialInstance defaultData;
+		GLTFMetallicRoughness metalRoughMaterial;
+
 		DrawContext mainDrawContext;
 		std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
-		void UpdateScene();
-
-
-		[[nodiscard]] std::string GetGPUName() const { return deviceProperties.deviceName; }
-		[[nodiscard]] float GetFPS() const { return fps_; }
 
 		bool isInit = false;
 
 	private:
+		Platform::WindowContext* windowContext_;
+		Camera camera_;
 
-		std::wstring renderName = L" - Vulkan";
-		bool stopRendering_ = false;
-		bool resizeRequested_ = false;
-		bool windowShown = false;
-		float renderScale = 1.0f;
-		float spacing = 5.0f;
-		float fps_ = 0.0f;
-		float deltaTime_ = 0.0f;
-		float lastTime_ = 0.0f;
-		float timeSinceLastFPSUpdate_ = 0.0f;
-		const float fpsUpdateInterval_ = 1.0f; // Update FPS every 1 second
-		bool meshLoaded_ = false;
+		// Vulkan core objects
+		VkPhysicalDeviceProperties deviceProperties{};
+		VkQueue graphicsQueue_{};
+		u32 graphicsQueueFamily_{};
+		VkSwapchainKHR swapchain_{VK_NULL_HANDLE};
+
+		// Memory management
+		DeletionQueue mainDeletionQueue_;
 
 		// UI visibility flags
 		bool showQuickStats_ = true;
 		bool showMemoryUsage_ = true;
 		bool modelDrawn = true;
 
-		float aspectRatio = 16.0f / 9.0f;
+		f32 aspectRatio = 16.0f / 9.0f; // default
 
-		Platform::WindowContext* windowContext_;
-		VulkanData vd;
-		VmaAllocator allocator_;
-		VkPhysicalDeviceProperties deviceProperties{};
-		VkQueue graphicsQueue_{};
-		u32 graphicsQueueFamily_{};
+		std::wstring renderName = L" - Vulkan";
+		bool stopRendering_ = false;
+		bool resizeRequested_ = false;
+		f32 renderScale = 1.0f;
+
+
+		// Timing and performance metrics
+		float deltaTime = 0.0f, renderTime = 0.0f, displayedFPS = 0.0f, accumulatedTime = 0.0f;
+		int frameCount = 0;
+		EngineStats stats;
+		std::unordered_map<std::string, float> timingResults;
 
 		std::vector<VkPresentModeKHR> availablePresentModes_;
 		std::vector<std::string> presentModeNames_;
 		int currentPresentModeIndex_ = 0;
 
 		// Swapchain properties
-		VkSwapchainKHR swapchain_{VK_NULL_HANDLE};
 		std::vector<VkImage> swapchainImages_;
 		std::vector<VkImageView> swapchainImageViews_;
 		VkExtent2D swapchainExtent_{};
+		VkExtent2D drawExtent_{};
 
 		// Frame data
 		FrameData frames_[FRAME_OVERLAP];
 		FrameData& GetCurrentFrame() { return frames_[frameNumber_ % FRAME_OVERLAP]; }
 		int frameNumber_{0};
-
-		VkSampler defaultSamplerLinear_{};
-		VkSampler defaultSamplerNearest_{};
-
-		VkExtent2D drawExtent_{};
 
 		// Descriptor-related members
 		DescriptorAllocatorGrowable globalDescriptorAllocator{};
@@ -225,7 +234,6 @@ namespace GraphicsAPI::Vulkan
 		VkDescriptorSetLayout drawImageDescriptorLayout_{};
 		VkDescriptorSetLayout singleImageDescriptorLayout_{};
 
-		VkPipeline gradientPipeline_{};
 		VkPipelineLayout gradientPipelineLayout_{};
 		GPUSceneData sceneData{};
 
@@ -237,11 +245,6 @@ namespace GraphicsAPI::Vulkan
 		// Mesh pipeline
 		VkPipelineLayout meshPipelineLayout_;
 		VkPipeline meshPipeline_;
-		GPUMeshBuffers rectangle;
-
-		// Triangle pipeline
-		VkPipelineLayout trianglePipelineLayout_{};
-		VkPipeline trianglePipeline_{};
 
 		// Background effects
 		std::vector<ComputeEffect> backgroundEffects;
@@ -249,22 +252,18 @@ namespace GraphicsAPI::Vulkan
 
 		// Asset loading
 		VkLoader loader_;
+		std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
+
 		std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 		u8 meshSelector = testMeshes.size();
 
-		// Materials
-		MaterialInstance defaultData;
-		GLTFMetallicRoughness metalRoughMaterial;
-
 		// Camera and projection parameters
 		glm::vec3 cameraPosition = glm::vec3(0, 0, -5);
-		float fov = 70.0f;
-		float nearPlane = 0.1f;
-		float farPlane = 10000.0f;
+		f32 fov = 70.0f;
+		f32 nearPlane = 0.1f;
+		f32 farPlane = 10000.0f;
 
 		TracyVkCtx tracyContext_{};
-		// Deletion queue
-		DeletionQueue mainDeletionQueue_;
 
 		ComputeEffect gradient{};
 		ComputeEffect sky{};

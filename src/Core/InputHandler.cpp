@@ -1,185 +1,97 @@
-#include "InputHandler.h"
+//
+// Created by Orgest on 4/23/2024.
+//
+#include "../Core/InputHandler.h"
 
-#include <algorithm>
+// TODO: INTEGRATEING THIS
 
-// ControllerButton Implementation
+// void UpdateControllerInput(Input &input)
+// {
+// 	XINPUT_STATE state{};
+//
+// 	if (XInputGetState(0, &state) == ERROR_SUCCESS)
+// 	{
+// 		XINPUT_GAMEPAD& gamepad = state.Gamepad;
+//
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_A], gamepad.wButtons & XINPUT_GAMEPAD_A);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_B], gamepad.wButtons & XINPUT_GAMEPAD_B);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_X], gamepad.wButtons & XINPUT_GAMEPAD_X);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_Y], gamepad.wButtons & XINPUT_GAMEPAD_Y);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_Start], gamepad.wButtons & XINPUT_GAMEPAD_START);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_Select], gamepad.wButtons & XINPUT_GAMEPAD_BACK);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_LeftShoulder], gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_RightShoulder], gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_DpadUp], gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_DpadDown], gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_DpadLeft], gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
+// 		processEventButton(input.xboxButtons[Xbox::Xbox_DpadRight], gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
+//
+// 		input.thumbLeftX = gamepad.sThumbLX / 32767.0f;  // Normalize to [-1, 1]
+// 		input.thumbLeftY = gamepad.sThumbLY / 32767.0f;
+// 		input.thumbRightX = gamepad.sThumbRX / 32767.0f;
+// 		input.thumbRightY = gamepad.sThumbRY / 32767.0f;
+//
+// 		// Handle trigger input (e.g., left and right triggers)
+// 		input.leftTrigger = gamepad.bLeftTrigger / 255.0f;  // Normalize to [0, 1]
+// 		input.rightTrigger = gamepad.bRightTrigger / 255.0f;
+// 	}
+// 	else
+// 	{
+// 		// Controller is not connected, reset the Xbox buttons to default
+// 		// input.xboxButtons.reset();
+// 	}
+// }
 
-void ControllerButton::Update(bool isPressed)
+void processInputAfter(Input &input)
 {
-    if (isPressed)
-    {
-        if (!held)
-        {
-            pressed = true;
-        }
-        held = true;
-        released = false;
-    }
-    else
-    {
-        if (held)
-        {
-            released = true;
-        }
-        pressed = false;
-        held = false;
-    }
+	// Reset pressed and released states for all keyboard buttons
+	for (auto& key : input.keyboard)
+	{
+		key.pressed = 0;
+		key.released = 0;
+	}
+
+	// Reset pressed and released states for all Xbox buttons
+	for (auto& button : input.xboxButtons)
+	{
+		button.pressed = 0;
+		button.released = 0;
+	}
+
+	// Reset pressed and released states for mouse buttons
+	for (auto& mouseButton : input.mouseButtons) {
+		mouseButton.pressed = 0;
+		mouseButton.released = 0;
+	}
+
 }
 
-void ControllerButton::Reset()
+void resetInput(Input &input)
 {
-    pressed = false;
-    released = false;
+	input.keyboard.reset();
+	input.mouseButtons.reset();
+	input.xboxButtons.reset();
 }
 
-// KeyboardButton Implementation (identical to ControllerButton for simplicity)
-
-void KeyboardButton::Update(bool isPressed)
+//newState == 1 means pressed else released
+void processEventButton(ButtonState &b, const bool newState)
 {
-    if (isPressed)
-    {
-        if (!held)
-        {
-            pressed = true;
-        }
-        held = true;
-        released = false;
-    }
-    else
-    {
-        if (held)
-        {
-            released = true;
-        }
-        pressed = false;
-        held = false;
-    }
-}
-
-void KeyboardButton::Reset()
-{
-    pressed = false;
-    released = false;
-}
-
-// Controller Implementation
-
-void Controller::Update()
-{
-    PollInput();
-
-    // Reset button states for the next frame after processing
-    for (auto& button : currentState.buttons)
-    {
-        button.Reset();
-    }
-}
-
-void Controller::PollInput()
-{
-    XINPUT_STATE state{};
-    DWORD result = XInputGetState(gamepadIndex, &state);
-
-    if (result == ERROR_SUCCESS)
-    {
-        isConnected = true;
-
-        // Update each button's state
-        for (int i = 0; i < ControllerButton::XboxButton::BUTTONS_COUNT; ++i)
-        {
-            bool isPressed = state.Gamepad.wButtons & (1 << i);
-            currentState.buttons[i].Update(isPressed);
-        }
-
-        currentState.leftStickX = state.Gamepad.sThumbLX;
-        currentState.leftStickY = state.Gamepad.sThumbLY;
-        currentState.rightStickX = state.Gamepad.sThumbRX;
-        currentState.rightStickY = state.Gamepad.sThumbRY;
-        currentState.leftTrigger = state.Gamepad.bLeftTrigger;
-        currentState.rightTrigger = state.Gamepad.bRightTrigger;
-    }
-    else
-    {
-        isConnected = false;
-    }
-}
-
-// Input Implementation
-
-void Input::updateUsingController()
-{
-    usingController = std::ranges::any_of(controllers, [](const Controller& c)
-    {
-        return c.isConnected;
-    });
-}
-
-bool Input::isControllerButtonPressed(ControllerButton::XboxButton button, u32 controllerIndex) const
-{
-    return controllers[controllerIndex].currentState.buttons[button].pressed;
-}
-
-bool Input::isKeyPressed(KeyboardButton::Keys key) const
-{
-    return keyboard[key].pressed;
-}
-
-bool Input::isMouseButtonPressed(const KeyboardButton& button)
-{
-    return button.pressed;
-}
-
-// New method to check for input with fallback
-bool Input::isInputActive(KeyboardButton::Keys key, ControllerButton::XboxButton button, u32 controllerIndex) const
-{
-    if (usingController && controllers[controllerIndex].isConnected)
-    {
-        return isControllerButtonPressed(button, controllerIndex);
-    }
-    else
-    {
-        return isKeyPressed(key);
-    }
-}
-
-void processInputAfter(Input& input)
-{
-    // Reset keyboard state
-    for (auto& key : input.keyboard)
-    {
-        key.Reset();
-    }
-
-    // Update and reset controller state
-    for (auto& controller : input.controllers)
-    {
-        if (controller.isConnected)
-        {
-            controller.Update();
-        }
-    }
-
-    // Reset mouse button states
-    input.lMouseButton.Reset();
-    input.rMouseButton.Reset();
-    input.mouse4Button.Reset();
-    input.mouse5Button.Reset();
-
-    // Clear typed input
-    input.typedInput.fill(0);
-}
-
-void resetInput(Input& input)
-{
-    input.lMouseButton = {};
-    input.rMouseButton = {};
-
-    input.keyboard.fill(KeyboardButton{});
-    input.typedInput.fill(0);
-}
-
-// Process button events: newState == 1 means pressed, else released
-void processEventButton(KeyboardButton& b, bool newState)
-{
-    b.Update(newState == 1);
+	//LOG(INFO, "Processing Event: ", (newState ? "Pressed" : "Released"));
+	if (newState)
+	{
+		// If button was just pressed, set 'pressed' and 'held'
+		if (!b.held)
+		{
+			b.pressed = true;
+		}
+		b.held = true;
+		b.released = false;
+	}
+	else
+	{
+		//LOG(INFO, "Button state changed to Held");
+		b.pressed = false;
+		b.held = false;
+		b.released = true;
+	}
 }

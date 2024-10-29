@@ -5,31 +5,33 @@
 #ifndef TIME_H
 #define TIME_H
 #include <chrono>
-#include <iostream>
-#include <utility>
+#include <unordered_map>
+
+#include "PrimTypes.h"
 
 class Timer
 {
 public:
-	explicit Timer(std::string functionName)
-		: m_FunctionName(std::move(functionName))
+	explicit Timer(const std::string_view functionName, std::unordered_map<std::string, f32>& timingResults)
+		: m_FunctionName(functionName), m_TimingResults(timingResults)
 	{
 		Reset();
 	}
 
 	~Timer()
 	{
-		std::cout << "Elapsed time for function " << m_FunctionName << ": " << ElapsedMillis() << " ms" << std::endl;
+		const f32 elapsedMillis = ElapsedMillis();
+		m_TimingResults[m_FunctionName] = elapsedMillis;
 	}
 
 	void Reset() { m_Start = std::chrono::high_resolution_clock::now(); }
 
-	float Elapsed() const
+	[[nodiscard]] f32 Elapsed() const
 	{
 		return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - m_Start).count() * 0.000001f;
 	}
 
-	float ElapsedMillis() const
+	[[nodiscard]] f32 ElapsedMillis() const
 	{
 		return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - m_Start).count();
 	}
@@ -37,6 +39,9 @@ public:
 private:
 	std::string m_FunctionName;
 	std::chrono::time_point<std::chrono::high_resolution_clock> m_Start;
+
+	// Reference to the timing results map where we'll store the elapsed time
+	std::unordered_map<std::string, f32>& m_TimingResults;
 };
 
 

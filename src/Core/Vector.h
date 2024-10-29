@@ -4,7 +4,6 @@
 
 #pragma once
 
-
 #ifdef USE_SMALL_VECTOR
     using vecSizeType = uint32_t;  // Use u32 for smaller vectors
 #else
@@ -121,10 +120,23 @@ public:
         size++;
     }
 
+	bool Contains(const T& object)
+    {
+	    for (vecSizeType i = 0; i < size; i++)
+	    {
+		    if (data[i] == object)
+		    {
+			    return true;
+		    }
+	    }
+	    return false;
+    }
+
     void PopBack()
     {
         if (size > 0)
         {
+        	data[size-1].~T();
             size--;
             // Shrink capacity if size is much smaller
             if (size < capacity / 4)

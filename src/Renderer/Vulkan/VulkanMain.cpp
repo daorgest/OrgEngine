@@ -2,20 +2,18 @@
 // Created by Orgest on 4/12/2024.
 //
 #ifdef VULKAN_BUILD
-#include <backends/imgui_impl_win32.h>
-
-#include "../../Core/Timer.h"
 #include "VulkanMain.h"
 
 #include <VkBootstrap.h>
 #include <vk_mem_alloc.h>
+#include <backends/imgui_impl_win32.h>
+
+#include "VulkanImages.h"
+#include "../../Core/Timer.h"
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/transform.hpp>
-#include <tracy/TracyVulkan.hpp>
-
-#include "../../Core/InputHandler.h"
 
 #ifndef NDEBUG
 constexpr bool bUseValidationLayers = true;
@@ -26,8 +24,8 @@ constexpr bool bUseValidationLayers = false;
 using namespace GraphicsAPI::Vulkan;
 
 VkEngine::VkEngine(Platform::WindowContext *winManager, const std::wstring& renderName) :
-	swapchainImageFormat_(), windowContext_(winManager), allocator_(nullptr),
-	frames_{}, meshPipelineLayout_(nullptr), meshPipeline_(nullptr), rectangle()
+	allocator_(nullptr), swapchainImageFormat_(), stats(), windowContext_(winManager), camera_(),
+	frames_{}, meshPipelineLayout_(nullptr), meshPipeline_(nullptr)
 {
 	windowContext_->appName += renderName;
 }
@@ -41,12 +39,14 @@ VkEngine::~VkEngine()
 
 void VkEngine::Run()
 {
-	Input input;
 	MSG msg = {};
 	bool bQuit = false;
 
 	while (!bQuit)
 	{
+		// Get delta time for the current frame
+		deltaTime = windowContext_->GetDeltaTime();
+
 		// Handle events on queue
 		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 		{
@@ -59,26 +59,6 @@ void VkEngine::Run()
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 
-			// Handle window size changes
-			if (msg.message == WM_SIZE)
-			{
-				if (msg.wParam != SIZE_MINIMIZED)
-				{
-
-					resizeRequested_ = true;
-				}
-
-				if (msg.wParam == SC_MINIMIZE)
-				{
-					stopRendering_ = true;
-				}
-
-				else if (msg.wParam == SC_RESTORE)
-				{
-					stopRendering_ = false;
-					resizeRequested_ = true;
-				}
-			}
 		}
 
 		// If WM_QUIT was received, exit the loop
@@ -87,35 +67,50 @@ void VkEngine::Run()
 			break;
 		}
 
+		// Handle resizing if requested
 		if (resizeRequested_)
 		{
 			ResizeSwapchain();
+			resizeRequested_ = false; // Reset the flag after resizing
 		}
 
-		// Do not draw if we are minimized
+		// Avoid drawing if the window is minimized
 		if (stopRendering_)
 		{
-			// Throttle the speed to avoid the endless spinning
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 			continue;
+		}
+
+		// Process
+		camera_.velocity = glm::vec3(0.0f);
+
+		if (input.keyboard[Keyboard::W].held) { camera_.velocity.z = -1.f; }
+		if (input.keyboard[Keyboard::A].held) { camera_.velocity.x = -1.f; }
+		if (input.keyboard[Keyboard::S].held) { camera_.velocity.z = 1.f; }
+		if (input.keyboard[Keyboard::D].held) { camera_.velocity.x = 1.f; }
+
+		if (input.mouseButtons[Mouse::Mouse_Left].pressed)
+		{
+			camera_.yaw =+ input.cursorX / 200.f;
+			camera_.pitch =- input.cursorY / 200.f;
 		}
 
 		// Start ImGui new frame
 		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
-		ImGui::ShowDemoWindow();
-		// Render ImGui components
 		RenderUI();
 		ImGui::Render();
 
+		// Draw the scene
+		UpdateScene();
+
 		// Draw the frame
 		Draw();
-		// win32_->input.reset();
 	}
 
+	// Clean up after exiting the main loop
 	Cleanup();
-
 	PostQuitMessage(0);
 }
 
@@ -130,12 +125,7 @@ void VkEngine::ResizeSwapchain()
 
 	DestroySwapchain();
 
-	RECT rect;
-	GetClientRect(windowContext_->hwnd, &rect);
-	int width = rect.right - rect.left;
-	int height = rect.bottom - rect.top;
-	swapchainExtent_.width = width;
-	swapchainExtent_.height = height;
+	// windowContext_->GetWindowSize(swapchainExtent_.width, swapchainExtent_.height);
 
 	CreateSwapchain(swapchainExtent_.width, swapchainExtent_.height);
 
@@ -156,6 +146,12 @@ void VkEngine::RenderQuickStatsImGui()
 		windowContext_->GetWindowSize(width, height);
 		ImGui::Text("Window Resolution: %ux%u", width, height);
 		ImGui::Text("Internal Resolution: %ux%u", drawExtent_.width, drawExtent_.height);
+		ImGui::Text("FPS: %f", displayedFPS);
+
+		for (const auto& [functionName, elapsedMillis] : timingResults)
+		{
+			ImGui::Text("%s: %.3f ms", functionName.c_str(), elapsedMillis);
+		}
 	}
 	ImGui::End();
 }
@@ -172,10 +168,10 @@ void VkEngine::RenderMemoryUsageImGui()
         vmaGetHeapBudgets(allocator_, budgets);
 
         // Static variables for refresh control
-        static bool autoRefresh = true;
-        static float refreshTimer = 0.0f;
-        const float refreshInterval = 1.0f; // Refresh every 1 second
-        static char* statsString = nullptr;
+        static bool   autoRefresh     = true;
+        static f32    refreshTimer    = 0.0f;
+        constexpr f32 refreshInterval = 1.0f; // Refresh every 1 second
+        static char*  statsString     = nullptr;
 
         // Heap statistics
         if (ImGui::CollapsingHeader("Heap Statistics"))
@@ -335,6 +331,16 @@ bool VkEngine::Init()
 		InitPipelines();
 		InitDefaultData();
 		InitImgui();
+
+		// Load the GLTF scene
+		auto structureFile = VkLoader::LoadGltfMeshes(this, "Models\\structure.glb");
+		assert(structureFile.has_value());
+		loadedScenes["structure"] = *structureFile;
+		camera_.velocity = glm::vec3(0.f);
+		camera_.position = glm::vec3(30.f, -00.f, -085.f);
+
+		camera_.pitch = 0;
+		camera_.yaw = 0;
 		isInit = true;
 		return true;
 	}
@@ -362,7 +368,6 @@ void VkEngine::InitVulkan()
 	vd.dbgMessenger = instRet.value().debug_messenger;
 
 	CreateSurfaceWin32(windowContext_->hInstance, windowContext_->hwnd, vd);
-	LOG(INFO, "Win32 Surface created successfully.");
 
 	//vulkan 1.3 features
 	VkPhysicalDeviceVulkan13Features features13{};
@@ -387,6 +392,8 @@ void VkEngine::InitVulkan()
 		return;
 	}
 	vd.physicalDevice = physDeviceRet.value().physical_device;
+
+
 	VkPhysicalDeviceProperties deviceProperties;
 	vkGetPhysicalDeviceProperties(vd.physicalDevice, &deviceProperties);
 	LOG(INFO, "Selected GPU: " + std::string(deviceProperties.deviceName));
@@ -424,6 +431,98 @@ void VkEngine::InitVulkan()
 	isInit = true;
 }
 
+void VkEngine::InitImguiStyles()
+{
+	// Dark Ruda style by Raikiri from ImThemes
+	ImGuiStyle& style = ImGui::GetStyle();
+
+	style.Alpha = 1.f;
+	style.DisabledAlpha = 0.6000000238418579f;
+	style.WindowPadding = ImVec2(8.0f, 8.0f);
+	style.WindowRounding = 0.0f;
+	style.WindowBorderSize = 1.0f;
+	style.WindowMinSize = ImVec2(32.0f, 32.0f);
+	style.WindowTitleAlign = ImVec2(0.0f, 0.5f);
+	style.WindowMenuButtonPosition = ImGuiDir_Left;
+	style.ChildRounding = 0.0f;
+	style.ChildBorderSize = 1.0f;
+	style.PopupRounding = 0.0f;
+	style.PopupBorderSize = 1.0f;
+	style.FramePadding = ImVec2(4.0f, 3.0f);
+	style.FrameRounding = 4.0f;
+	style.FrameBorderSize = 0.0f;
+	style.ItemSpacing = ImVec2(8.0f, 4.0f);
+	style.ItemInnerSpacing = ImVec2(4.0f, 4.0f);
+	style.CellPadding = ImVec2(4.0f, 2.0f);
+	style.IndentSpacing = 21.0f;
+	style.ColumnsMinSpacing = 6.0f;
+	style.ScrollbarSize = 14.0f;
+	style.ScrollbarRounding = 9.0f;
+	style.GrabMinSize = 10.0f;
+	style.GrabRounding = 4.0f;
+	style.TabRounding = 4.0f;
+	style.TabBorderSize = 0.0f;
+	style.TabMinWidthForCloseButton = 0.0f;
+	style.ColorButtonPosition = ImGuiDir_Right;
+	style.ButtonTextAlign = ImVec2(0.5f, 0.5f);
+	style.SelectableTextAlign = ImVec2(0.0f, 0.0f);
+
+	style.Colors[ImGuiCol_Text] = ImVec4(0.9490196108818054f, 0.95686274766922f, 0.9764705896377563f, 1.0f);
+	style.Colors[ImGuiCol_TextDisabled] = ImVec4(0.3568627536296844f, 0.4196078479290009f, 0.4666666686534882f, 1.0f);
+	style.Colors[ImGuiCol_WindowBg] = ImVec4(0.1098039224743843f, 0.1490196138620377f, 0.168627455830574f, 1.0f);
+	style.Colors[ImGuiCol_ChildBg] = ImVec4(0.1490196138620377f, 0.1764705926179886f, 0.2196078449487686f, 1.0f);
+	style.Colors[ImGuiCol_PopupBg] = ImVec4(0.0784313753247261f, 0.0784313753247261f, 0.0784313753247261f, 0.9399999976158142f);
+	style.Colors[ImGuiCol_Border] = ImVec4(0.0784313753247261f, 0.09803921729326248f, 0.1176470592617989f, 1.0f);
+	style.Colors[ImGuiCol_BorderShadow] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+	style.Colors[ImGuiCol_FrameBg] = ImVec4(0.2000000029802322f, 0.2470588237047195f, 0.2862745225429535f, 1.0f);
+	style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.1176470592617989f, 0.2000000029802322f, 0.2784313857555389f, 1.0f);
+	style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.08627451211214066f, 0.1176470592617989f, 0.1372549086809158f, 1.0f);
+	style.Colors[ImGuiCol_TitleBg] = ImVec4(0.08627451211214066f, 0.1176470592617989f, 0.1372549086809158f, 0.6499999761581421f);
+	style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.0784313753247261f, 0.09803921729326248f, 0.1176470592617989f, 1.0f);
+	style.Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.0f, 0.0f, 0.0f, 0.5099999904632568f);
+	style.Colors[ImGuiCol_MenuBarBg] = ImVec4(0.1490196138620377f, 0.1764705926179886f, 0.2196078449487686f, 1.0f);
+	style.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.01960784383118153f, 0.01960784383118153f, 0.01960784383118153f, 0.3899999856948853f);
+	style.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.2000000029802322f, 0.2470588237047195f, 0.2862745225429535f, 1.0f);
+	style.Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.1764705926179886f, 0.2196078449487686f, 0.2470588237047195f, 1.0f);
+	style.Colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.08627451211214066f, 0.2078431397676468f, 0.3098039329051971f, 1.0f);
+	style.Colors[ImGuiCol_CheckMark] = ImVec4(0.2784313857555389f, 0.5568627715110779f, 1.0f, 1.0f);
+	style.Colors[ImGuiCol_SliderGrab] = ImVec4(0.2784313857555389f, 0.5568627715110779f, 1.0f, 1.0f);
+	style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.3686274588108063f, 0.6078431606292725f, 1.0f, 1.0f);
+	style.Colors[ImGuiCol_Button] = ImVec4(0.2000000029802322f, 0.2470588237047195f, 0.2862745225429535f, 1.0f);
+	style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.2784313857555389f, 0.5568627715110779f, 1.0f, 1.0f);
+	style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.05882352963089943f, 0.529411792755127f, 0.9764705896377563f, 1.0f);
+	style.Colors[ImGuiCol_Header] = ImVec4(0.2000000029802322f, 0.2470588237047195f, 0.2862745225429535f, 0.550000011920929f);
+	style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.2588235437870026f, 0.5882353186607361f, 0.9764705896377563f, 0.800000011920929f);
+	style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.2588235437870026f, 0.5882353186607361f, 0.9764705896377563f, 1.0f);
+	style.Colors[ImGuiCol_Separator] = ImVec4(0.2000000029802322f, 0.2470588237047195f, 0.2862745225429535f, 1.0f);
+	style.Colors[ImGuiCol_SeparatorHovered] = ImVec4(0.09803921729326248f, 0.4000000059604645f, 0.7490196228027344f, 0.7799999713897705f);
+	style.Colors[ImGuiCol_SeparatorActive] = ImVec4(0.09803921729326248f, 0.4000000059604645f, 0.7490196228027344f, 1.0f);
+	style.Colors[ImGuiCol_ResizeGrip] = ImVec4(0.2588235437870026f, 0.5882353186607361f, 0.9764705896377563f, 0.25f);
+	style.Colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.2588235437870026f, 0.5882353186607361f, 0.9764705896377563f, 0.6700000166893005f);
+	style.Colors[ImGuiCol_ResizeGripActive] = ImVec4(0.2588235437870026f, 0.5882353186607361f, 0.9764705896377563f, 0.949999988079071f);
+	style.Colors[ImGuiCol_Tab] = ImVec4(0.1098039224743843f, 0.1490196138620377f, 0.168627455830574f, 1.0f);
+	style.Colors[ImGuiCol_TabHovered] = ImVec4(0.2588235437870026f, 0.5882353186607361f, 0.9764705896377563f, 0.800000011920929f);
+	style.Colors[ImGuiCol_TabActive] = ImVec4(0.2000000029802322f, 0.2470588237047195f, 0.2862745225429535f, 1.0f);
+	style.Colors[ImGuiCol_TabUnfocused] = ImVec4(0.1098039224743843f, 0.1490196138620377f, 0.168627455830574f, 1.0f);
+	style.Colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.1098039224743843f, 0.1490196138620377f, 0.168627455830574f, 1.0f);
+	style.Colors[ImGuiCol_PlotLines] = ImVec4(0.6078431606292725f, 0.6078431606292725f, 0.6078431606292725f, 1.0f);
+	style.Colors[ImGuiCol_PlotLinesHovered] = ImVec4(1.0f, 0.4274509847164154f, 0.3490196168422699f, 1.0f);
+	style.Colors[ImGuiCol_PlotHistogram] = ImVec4(0.8980392217636108f, 0.6980392336845398f, 0.0f, 1.0f);
+	style.Colors[ImGuiCol_PlotHistogramHovered] = ImVec4(1.0f, 0.6000000238418579f, 0.0f, 1.0f);
+	style.Colors[ImGuiCol_TableHeaderBg] = ImVec4(0.1882352977991104f, 0.1882352977991104f, 0.2000000029802322f, 1.0f);
+	style.Colors[ImGuiCol_TableBorderStrong] = ImVec4(0.3098039329051971f, 0.3098039329051971f, 0.3490196168422699f, 1.0f);
+	style.Colors[ImGuiCol_TableBorderLight] = ImVec4(0.2274509817361832f, 0.2274509817361832f, 0.2470588237047195f, 1.0f);
+	style.Colors[ImGuiCol_TableRowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+	style.Colors[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.05999999865889549f);
+	style.Colors[ImGuiCol_TextSelectedBg] = ImVec4(0.2588235437870026f, 0.5882353186607361f, 0.9764705896377563f, 0.3499999940395355f);
+	style.Colors[ImGuiCol_DragDropTarget] = ImVec4(1.0f, 1.0f, 0.0f, 0.8999999761581421f);
+	style.Colors[ImGuiCol_NavHighlight] = ImVec4(0.2588235437870026f, 0.5882353186607361f, 0.9764705896377563f, 1.0f);
+	style.Colors[ImGuiCol_NavWindowingHighlight] = ImVec4(1.0f, 1.0f, 1.0f, 0.699999988079071f);
+	style.Colors[ImGuiCol_NavWindowingDimBg] = ImVec4(0.800000011920929f, 0.800000011920929f, 0.800000011920929f, 0.2000000029802322f);
+	style.Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.800000011920929f, 0.800000011920929f, 0.800000011920929f, 0.3499999940395355f);
+
+}
+
 void VkEngine::InitImgui()
 {
 	// Create descriptor pool for IMGUI
@@ -457,6 +556,7 @@ void VkEngine::InitImgui()
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 	io.ConfigDebugIsDebuggerPresent = true;
+	InitImguiStyles();
 
 	ImGui_ImplWin32_Init(windowContext_->hwnd);
 
@@ -471,7 +571,7 @@ void VkEngine::InitImgui()
 		.ImageCount = 3,
 		.MSAASamples = VK_SAMPLE_COUNT_1_BIT,
 		.UseDynamicRendering = true,
-		.PipelineRenderingCreateInfo= {
+		.PipelineRenderingCreateInfo = {
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
 			.colorAttachmentCount = 1,
 			.pColorAttachmentFormats = &swapchainImageFormat_
@@ -491,6 +591,81 @@ void VkEngine::InitImgui()
 		"Imgui");
 }
 
+void VkEngine::InitDescriptors()
+{
+	//create a descriptor pool that will hold 10 sets with 1 image each
+	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes
+	{
+		{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}
+	};
+
+	globalDescriptorAllocator.Init(vd.device, 10, sizes);
+
+	//make the descriptor set layout for our compute draw
+	{
+		DescriptorLayoutBuilder builder;
+		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+		drawImageDescriptorLayout_ = builder.Build(vd.device, VK_SHADER_STAGE_COMPUTE_BIT);
+	}
+
+	// Single-Image sampler layout for the mesh draw
+	{
+		DescriptorLayoutBuilder builder;
+		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		singleImageDescriptorLayout_ = builder.Build(vd.device, VK_SHADER_STAGE_FRAGMENT_BIT);
+	}
+
+
+	//allocate a descriptor set for our draw image
+	drawImageDescriptors_ = globalDescriptorAllocator.Allocate(vd.device, drawImageDescriptorLayout_);
+
+	VkDescriptorWriter writer;
+	writer.WriteImage(0, drawImage_.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+	writer.UpdateSet(vd.device, drawImageDescriptors_);
+
+	// Create a descriptor set layout with a single uniform buffer binding
+	{
+		DescriptorLayoutBuilder builder;
+		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		gpuSceneDataDescriptorLayout_ = builder.Build(vd.device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+	}
+
+	mainDeletionQueue_.pushFunction([device = vd.device, layout = drawImageDescriptorLayout_]() {
+	vkDestroyDescriptorSetLayout(device, layout, nullptr);
+}, "Draw Image Descriptor Set Layout");
+
+	mainDeletionQueue_.pushFunction([device = vd.device, layout = singleImageDescriptorLayout_]() {
+		vkDestroyDescriptorSetLayout(device, layout, nullptr);
+	}, "Single Image Descriptor Set Layout");
+
+	mainDeletionQueue_.pushFunction([device = vd.device, layout = gpuSceneDataDescriptorLayout_]() {
+		vkDestroyDescriptorSetLayout(device, layout, nullptr);
+	}, "GPU Scene Data Descriptor Set Layout");
+
+	for (auto & frame : frames_) {
+		// create a descriptor pool
+		std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frameSizes
+		{
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+		};
+
+		frame.frameDescriptors_ = DescriptorAllocatorGrowable{};
+		frame.frameDescriptors_.Init(vd.device, 1000, frameSizes);
+
+		mainDeletionQueue_.pushFunction([&frame, device = vd.device]() {
+		   frame.frameDescriptors_.DestroyPools(device);
+	   }, "Frame Descriptor Pools");
+	}
+
+	// Add global descriptor allocator destruction to the deletion queue
+	mainDeletionQueue_.pushFunction([this]() {
+		globalDescriptorAllocator.DestroyPools(vd.device);
+	}, "Global Descriptor Pool");
+}
+
 #pragma endregion Initialization
 
 #pragma region Cleanup
@@ -500,9 +675,10 @@ void VkEngine::Cleanup()
 	if (isInit)
 	{
 		vkDeviceWaitIdle(vd.device);
+		loadedScenes.clear();
 		TracyVkDestroy(tracyContext_);
 
-		for (auto & frame : frames_)
+		for (auto& frame : frames_)
 		{
 			// Destroy sync objects
 			vkDestroyFence(vd.device, frame.renderFence_, nullptr);
@@ -643,28 +819,33 @@ void VkEngine::InitSwapchain()
     CreateSwapchain(windowContext_->screenWidth, windowContext_->screenHeight);
 
     // Setup the draw image
-    drawImage_.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    drawImage_.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
     drawImage_.imageExtent = GetScreenResolution();
 
-    VkImageUsageFlags drawImageUsages = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                                        VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                                        VK_IMAGE_USAGE_STORAGE_BIT |
-                                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	VkImageUsageFlags drawImageUsages{};
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
 
     VkImageCreateInfo drawImageInfo = VkInfo::ImageInfo(drawImage_.imageFormat, drawImageUsages, drawImage_.imageExtent);
-    CreateImageWithVMA(drawImageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, drawImage_.image, drawImage_.allocation);
+    VkImages::CreateImageWithVMA(drawImageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, drawImage_.image,
+    	drawImage_.allocation, allocator_);
 
     VkImageViewCreateInfo drawImageViewInfo = VkInfo::ImageViewInfo(drawImage_.imageFormat, drawImage_.image, VK_IMAGE_ASPECT_COLOR_BIT);
     VK_CHECK(vkCreateImageView(vd.device, &drawImageViewInfo, nullptr, &drawImage_.imageView));
 
     // Setup the depth image (for depth testing)
     depthImage_.imageFormat = VK_FORMAT_D32_SFLOAT;
-    depthImage_.imageExtent = drawImage_.imageExtent; // Match draw image size
+    depthImage_.imageExtent = GetScreenResolution(); // Match draw image size
 
-    VkImageUsageFlags depthImageUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    VkImageUsageFlags depthImageUsages {};
+	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
-    VkImageCreateInfo depthImageInfo = VkInfo::ImageInfo(depthImage_.imageFormat, depthImageUsages, depthImage_.imageExtent);
-    CreateImageWithVMA(depthImageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage_.image, depthImage_.allocation);
+    VkImageCreateInfo depthImageInfo = VkInfo::ImageInfo(depthImage_.imageFormat, depthImageUsages, GetScreenResolution());
+    VkImages::CreateImageWithVMA(depthImageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage_.image,
+    	depthImage_.allocation, allocator_);
 
     VkImageViewCreateInfo depthImageViewInfo = VkInfo::ImageViewInfo(depthImage_.imageFormat, depthImage_.image, VK_IMAGE_ASPECT_DEPTH_BIT);
     VK_CHECK(vkCreateImageView(vd.device, &depthImageViewInfo, nullptr, &depthImage_.imageView));
@@ -680,9 +861,27 @@ void VkEngine::InitSwapchain()
     }, "Draw and Depth Images");
 }
 
+void VkEngine::SetViewportAndScissor(VkCommandBuffer cmd, const VkExtent2D& extent)
+{
+	VkViewport viewport = {};
+	viewport.x = 0;
+	viewport.y = 0;
+	viewport.width = static_cast<float>(extent.width);
+	viewport.height = static_cast<float>(extent.height);
+	viewport.minDepth = 1.f;
+	viewport.maxDepth = 0.f;
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+	VkRect2D scissor = {};
+	scissor.offset = {0, 0};
+	scissor.extent = extent;
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+}
+
 
 void VkEngine::DestroySwapchain() const
 {
+
     if (swapchain_ != VK_NULL_HANDLE)
     {
         vkDestroySwapchainKHR(vd.device, swapchain_, nullptr);
@@ -719,11 +918,9 @@ void VkEngine::InitCommands()
 
 void VkEngine::InitializeCommandPoolsAndBuffers()
 {
-	for (int i = 0; i < FRAME_OVERLAP; i++)
+	for (auto & frame : frames_)
 	{
-		FrameData& frame = frames_[i];
-
-		VkCommandPoolCreateInfo poolInfo = VkInfo::CommandPoolInfo(graphicsQueueFamily_,
+			VkCommandPoolCreateInfo poolInfo = VkInfo::CommandPoolInfo(graphicsQueueFamily_,
 			VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
 		if (vkCreateCommandPool(vd.device, &poolInfo, nullptr, &frame.commandPool_) != VK_SUCCESS)
@@ -772,73 +969,37 @@ void VkEngine::InitSyncStructures()
 
 void VkEngine::ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function) const
 {
+	// Reset fence to unsignaled state
 	VK_CHECK(vkResetFences(vd.device, 1, &immFence_));
+
+	// Reset command buffer for one-time use
 	VK_CHECK(vkResetCommandBuffer(immCommandBuffer_, 0));
 
 	VkCommandBuffer cmd = immCommandBuffer_;
 
+	// Begin command buffer with one-time usage flag
 	VkCommandBufferBeginInfo cmdBeginInfo = VkInfo::CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
+	// Execute the provided command buffer function
 	function(cmd);
 
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
+	// Prepare submit info structures
 	VkCommandBufferSubmitInfo cmdinfo = VkInfo::CommandBufferSubmitInfo(cmd);
 	VkSubmitInfo2 submit = VkInfo::SubmitInfo(&cmdinfo, nullptr, nullptr);
 
-	// submit command buffer to the queue and execute it.
-	//  _renderFence will now block until the graphic commands finish execution
+	// Submit the command buffer and wait for completion
 	VK_CHECK(vkQueueSubmit2(graphicsQueue_, 1, &submit, immFence_));
-
-	VK_CHECK(vkWaitForFences(vd.device, 1, &immFence_, true, 9999999999));
+	VK_CHECK(vkWaitForFences(vd.device, 1, &immFence_, VK_TRUE, UINT64_MAX));
 }
+
 
 
 #pragma endregion Fence
 
 #pragma region Image
-
-AllocatedImage VkEngine::CreateImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
-{
-	AllocatedImage newImage
-	{
-		.imageExtent = size,
-		.imageFormat = format
-	};
-
-	VkImageCreateInfo imgInfo = VkInfo::ImageInfo(format, usage, size);
-	if (mipmapped)
-	{
-		imgInfo.mipLevels = static_cast<u32>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
-	}
-
-	// always allocate images on dedicated GPU memory
-	VmaAllocationCreateInfo allocinfo
-	{
-		.usage = VMA_MEMORY_USAGE_GPU_ONLY,
-		.requiredFlags = static_cast<VkMemoryPropertyFlags>(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
-	};
-
-	VK_CHECK(vmaCreateImage(allocator_, &imgInfo, &allocinfo, &newImage.image, &newImage.allocation, nullptr));
-
-	// if the format is a depth format, we will need to have it use the correct aspect flag
-	VkImageAspectFlags aspectFlag = VK_IMAGE_ASPECT_COLOR_BIT;
-	if (format == VK_FORMAT_D32_SFLOAT)
-	{
-		aspectFlag = VK_IMAGE_ASPECT_DEPTH_BIT;
-	}
-
-	// build an image-view for the image
-	VkImageViewCreateInfo viewInfo = VkInfo::ImageViewInfo(format, newImage.image, aspectFlag);
-	viewInfo.subresourceRange.levelCount = imgInfo.mipLevels;
-
-	VK_CHECK(vkCreateImageView(vd.device, &viewInfo, nullptr, &newImage.imageView));
-
-	return newImage;
-
-}
 
 AllocatedImage VkEngine::CreateImageData(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
 {
@@ -847,11 +1008,11 @@ AllocatedImage VkEngine::CreateImageData(void* data, VkExtent3D size, VkFormat f
 
 	memcpy(uploadBuffer.info.pMappedData, data, dataSize);
 
-	AllocatedImage newImage = CreateImage(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
+	AllocatedImage newImage = VkImages::CreateImage(vd.device, size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, allocator_, mipmapped);
 
 	ImmediateSubmit([&](VkCommandBuffer cmd)
 	{
-		TransitionImage(cmd, newImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		VkImages::TransitionImage(cmd, newImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 		VkBufferImageCopy copyRegion
 		{
@@ -870,7 +1031,7 @@ AllocatedImage VkEngine::CreateImageData(void* data, VkExtent3D size, VkFormat f
 		// copy the buffer into the image
 		vkCmdCopyBufferToImage(cmd, uploadBuffer.buffer, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-		TransitionImage(cmd, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		VkImages::TransitionImage(cmd, newImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	});
 
 	DestroyBuffer(uploadBuffer);
@@ -878,102 +1039,6 @@ AllocatedImage VkEngine::CreateImageData(void* data, VkExtent3D size, VkFormat f
 	return newImage;
 }
 
-void VkEngine::DestroyImage(const AllocatedImage& img)
-{
-	vkDestroyImageView(vd.device, img.imageView, nullptr);
-	vmaDestroyImage(allocator_, img.image, img.allocation);
-}
-
-void VkEngine::CreateImageWithVMA(const VkImageCreateInfo& imageInfo, VkMemoryPropertyFlags memoryPropertyFlags, VkImage& image, VmaAllocation& allocation) const
-{
-	VmaAllocationCreateInfo allocInfo = {};
-	allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-	allocInfo.requiredFlags = memoryPropertyFlags;
-
-	VK_CHECK(vmaCreateImage(allocator_, &imageInfo, &allocInfo, &image, &allocation, nullptr));
-}
-
-
-void VkEngine::CopyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize,
-								VkExtent2D dstSize)
-{
-	VkImageBlit2 blitRegion{.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2, .pNext = nullptr};
-
-	blitRegion.srcOffsets[1].x = srcSize.width;
-	blitRegion.srcOffsets[1].y = srcSize.height;
-	blitRegion.srcOffsets[1].z = 1;
-
-	blitRegion.dstOffsets[1].x = dstSize.width;
-	blitRegion.dstOffsets[1].y = dstSize.height;
-	blitRegion.dstOffsets[1].z = 1;
-
-	blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	blitRegion.srcSubresource.baseArrayLayer = 0;
-	blitRegion.srcSubresource.layerCount = 1;
-	blitRegion.srcSubresource.mipLevel = 0;
-
-	blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	blitRegion.dstSubresource.baseArrayLayer = 0;
-	blitRegion.dstSubresource.layerCount = 1;
-	blitRegion.dstSubresource.mipLevel = 0;
-
-	VkBlitImageInfo2 blitInfo{
-		.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
-		.pNext = nullptr,
-		.srcImage = source,
-							  .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-							  .dstImage = destination,
-							  .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-							  .regionCount = 1,
-							  .pRegions = &blitRegion,
-							  .filter = VK_FILTER_LINEAR};
-
-	vkCmdBlitImage2(cmd, &blitInfo);
-}
-
-void VkEngine::TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout) const
-{
-	ZoneScoped;
-	VkImageMemoryBarrier2 imageBarrier {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-	imageBarrier.pNext = nullptr;
-
-	imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-	imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
-	imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-	imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
-
-	imageBarrier.oldLayout = currentLayout;
-	imageBarrier.newLayout = newLayout;
-
-	VkImageAspectFlags aspectMask = (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-	imageBarrier.subresourceRange = ImageSubresourceRange(aspectMask);
-	imageBarrier.image = image;
-
-	VkDependencyInfo depInfo {};
-	depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-	depInfo.pNext = nullptr;
-
-	depInfo.imageMemoryBarrierCount = 1;
-	depInfo.pImageMemoryBarriers = &imageBarrier;
-
-	vkCmdPipelineBarrier2(cmd, &depInfo);
-}
-
-
-VkImageSubresourceRange VkEngine::ImageSubresourceRange(VkImageAspectFlags aspectMask)
-{
-	return VkImageSubresourceRange
-	{
-		.aspectMask = aspectMask,
-		// Specifies which aspects of the image are included in the view (e.g., color, depth, stencil).
-		.baseMipLevel = 0, // The first mipmap level accessible to the view.
-		.levelCount = VK_REMAINING_MIP_LEVELS,
-		// Specifies the number of mipmap levels (VK_REMAINING_MIP_LEVELS to include all levels).
-		.baseArrayLayer = 0, // The first array layer accessible to the view.
-		.layerCount = VK_REMAINING_ARRAY_LAYERS
-		// Specifies the number of array layers (VK_REMAINING_ARRAY_LAYERS to include all layers).
-	};
-}
 #pragma endregion Image
 
 #pragma region Buffer
@@ -1000,11 +1065,6 @@ AllocatedBuffer VkEngine::CreateBuffer(size_t allocSize, VkBufferUsageFlags usag
 	// allocate the buffer
 	VK_CHECK(vmaCreateBuffer(allocator_, &bufferInfo, &vmaAllocInfo, &newBuffer.buffer, &newBuffer.allocation,
 		&newBuffer.info));
-	// vmaSetAllocationName(allocator_, newBuffer.allocation, "MyBufferAllocation");
-	//
-	// // // Assert to check for uninitialized buffer handle
-	// assert(newBuffer.buffer != VK_NULL_HANDLE && "Buffer creation failed: Buffer handle is VK_NULL_HANDLE");
-	// assert(newBuffer.buffer != reinterpret_cast<VkBuffer>(0xcccccccccccccccc) && "Buffer creation failed: Buffer handle is uninitialized (0xcccccccccccccccc)");
 
 	return newBuffer;
 }
@@ -1031,7 +1091,7 @@ void VkEngine::CleanupAlloc()
 	vmaDestroyAllocator(allocator_);
 }
 
-VkDeviceAddress VkEngine::GetBufferDeviceAddress(VkBuffer buffer) const
+VkDeviceAddress VkEngine::GetBufferDeviceAddress(VkBuffer buffer)
 {
     VkBufferDeviceAddressInfo deviceAddressInfo{
         .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
@@ -1044,7 +1104,6 @@ GPUMeshBuffers VkEngine::UploadMesh(std::span<u32> indices, std::span<Vertex> ve
 {
     const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
     const size_t indexBufferSize = indices.size() * sizeof(u32);
-    const size_t stagingBufferSize = vertexBufferSize + indexBufferSize;
 
     GPUMeshBuffers newSurface{};
 
@@ -1060,7 +1119,7 @@ GPUMeshBuffers VkEngine::UploadMesh(std::span<u32> indices, std::span<Vertex> ve
                                           VMA_MEMORY_USAGE_GPU_ONLY);
 
     // Create staging buffer on CPU (host-visible)
-    AllocatedBuffer stagingBuffer = CreateBuffer(stagingBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+    AllocatedBuffer stagingBuffer = CreateBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
     // Map staging buffer to CPU address space
     void* mappedData = nullptr;
@@ -1075,13 +1134,19 @@ GPUMeshBuffers VkEngine::UploadMesh(std::span<u32> indices, std::span<Vertex> ve
 
     // Submit copy commands to transfer data from staging buffer to GPU buffers
     ImmediateSubmit([&](const VkCommandBuffer cmd) {
-        // Copy vertex data from staging buffer to GPU vertex buffer
-        VkBufferCopy vertexCopy{ 0, 0, vertexBufferSize };
-        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+    	VkBufferCopy vertexCopy{};
+		vertexCopy.dstOffset = 0;
+		vertexCopy.srcOffset = 0;
+		vertexCopy.size = vertexBufferSize;
 
-        // Copy index data from staging buffer to GPU index buffer
-        VkBufferCopy indexCopy{ vertexBufferSize, 0, indexBufferSize };
-        vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+		vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+
+		VkBufferCopy indexCopy{};
+		indexCopy.dstOffset = 0;
+		indexCopy.srcOffset = vertexBufferSize;
+		indexCopy.size = indexBufferSize;
+
+		vkCmdCopyBuffer(cmd, stagingBuffer.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
     });
 
     // Clean up staging buffer
@@ -1104,17 +1169,15 @@ void VkEngine::InitPipelines()
 }
 void VkEngine::InitBackgroundPipelines()
 {
-	// CreatePipelineLayoutInfo();
-
 	VkPipelineLayoutCreateInfo computeLayout
 	{
 		.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.pNext                  = nullptr,
-		.flags                  = 0, // default value
+		.flags                  = 0,
 		.setLayoutCount         = 1,
 		.pSetLayouts            = &drawImageDescriptorLayout_,
-		.pushConstantRangeCount = 0, // default value, adjust if needed
-		.pPushConstantRanges    = nullptr // default value, adjust if needed
+		.pushConstantRangeCount = 0,
+		.pPushConstantRanges    = nullptr
 	};
 
 	VkPushConstantRange pushConstant
@@ -1240,83 +1303,28 @@ void VkEngine::InitMeshPipeline()
     {
         vkDestroyPipelineLayout(vd.device, meshPipelineLayout_, nullptr);
         vkDestroyPipeline(vd.device, meshPipeline_, nullptr);
-		},
-		"Mesh Pipeline");
+    }, "Mesh Pipeline");
 }
 
 #pragma endregion Pipelines
-
-#pragma region Descriptor
-
-void VkEngine::InitDescriptors()
-{
-	//create a descriptor pool that will hold 10 sets with 1 image each
-	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes
-	{
-		{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}
-	};
-
-	globalDescriptorAllocator.Init(vd.device, 10, sizes);
-
-	//make the descriptor set layout for our compute draw
-	{
-		DescriptorLayoutBuilder builder;
-		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-		drawImageDescriptorLayout_ = builder.Build(vd.device, VK_SHADER_STAGE_COMPUTE_BIT);
-	}
-
-	// Single-Image sampler layout for the mesh draw
-	{
-		DescriptorLayoutBuilder builder;
-		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-		singleImageDescriptorLayout_ = builder.Build(vd.device, VK_SHADER_STAGE_FRAGMENT_BIT);
-	}
-
-
-	//allocate a descriptor set for our draw image
-	drawImageDescriptors_ = globalDescriptorAllocator.Allocate(vd.device, drawImageDescriptorLayout_);
-
-	VkDescriptorWriter writer;
-	writer.WriteImage(0, drawImage_.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-	writer.UpdateSet(vd.device, drawImageDescriptors_);
-
-	// Create a descriptor set layout with a single uniform buffer binding
-	{
-		DescriptorLayoutBuilder builder;
-		builder.AddBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-		gpuSceneDataDescriptorLayout_ = builder.Build(vd.device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-	}
-
-	for (auto & frame : frames_) {
-		// create a descriptor pool
-		std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frameSizes
-		{
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
-		};
-
-		frame.frameDescriptors_ = DescriptorAllocatorGrowable{};
-		frame.frameDescriptors_.Init(vd.device, 1000, frameSizes);
-
-		mainDeletionQueue_.pushFunction([this, &frame]()
-		{
-			frame.frameDescriptors_.DestroyPools(vd.device);
-		}, "Descriptor Pools");
-	}
-}
-
-#pragma endregion Descriptor
 
 #pragma region Draw
 
 void VkEngine::DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView)
 {
-	TracyVkZone(tracyContext_, cmd, "Draw imgui")
-	VkRenderingAttachmentInfo colorAttachment = VkInfo::RenderAttachmentInfo(targetImageView, nullptr,
-	                                                           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	VkRenderingInfo renderInfo = VkInfo::RenderInfo(swapchainExtent_, &colorAttachment, nullptr);
+	TracyVkZone(tracyContext_, cmd, "Draw ImGui");
+
+	VkRenderingAttachmentInfo colorAttachment = VkInfo::RenderAttachmentInfo(
+		targetImageView,
+		nullptr,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	);
+
+	VkRenderingInfo renderInfo = VkInfo::RenderInfo(
+		swapchainExtent_,
+		&colorAttachment,
+		nullptr
+	);
 
 	vkCmdBeginRendering(cmd, &renderInfo);
 
@@ -1327,9 +1335,9 @@ void VkEngine::DrawImGui(VkCommandBuffer cmd, VkImageView targetImageView)
 
 void VkEngine::DrawBackground(VkCommandBuffer cmd)
 {
-	TracyVkZone(tracyContext_, cmd, "Draw Background")
-	ComputeEffect& effect = backgroundEffects[currentBackgroundEffect_];
+	TracyVkZone(tracyContext_, cmd, "Draw Background");
 
+	ComputeEffect& effect = backgroundEffects[currentBackgroundEffect_];
 	// Bind the background compute pipeline
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 
@@ -1342,9 +1350,14 @@ void VkEngine::DrawBackground(VkCommandBuffer cmd)
 	vkCmdDispatch(cmd, static_cast<u32>(std::ceil(drawExtent_.width / 16.0)), static_cast<u32>(std::ceil(drawExtent_.height / 16.0)), 1);
 }
 
+
 void VkEngine::DrawGeometry(VkCommandBuffer cmd)
 {
     TracyVkZone(tracyContext_, cmd, "Draw Geometry");
+	// Prepare rendering attachments for color and depth
+	VkRenderingAttachmentInfo colorAttachment = VkInfo::RenderAttachmentInfo(drawImage_.imageView, nullptr, VK_IMAGE_LAYOUT_GENERAL);
+	VkRenderingAttachmentInfo depthAttachment = VkInfo::DepthAttachmentInfo(depthImage_.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+	VkRenderingInfo renderInfo = VkInfo::RenderInfo(drawExtent_, &colorAttachment, &depthAttachment);
 
     // Allocate a uniform buffer for the scene data
     AllocatedBuffer gpuSceneDataBuffer = CreateBuffer(
@@ -1358,16 +1371,12 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
         DestroyBuffer(gpuSceneDataBuffer);
     });
 
-    // Map the uniform buffer memory to CPU address space and copy scene data
-    void* data = nullptr;
-    vmaMapMemory(allocator_, gpuSceneDataBuffer.allocation, &data);
-
-    // Write to the mapped memory
-    auto* sceneUniformData = static_cast<GPUSceneData*>(data);
-    *sceneUniformData = sceneData;
-
-    // Unmap the memory allocation
-    vmaUnmapMemory(allocator_, gpuSceneDataBuffer.allocation);
+	// Map and copy scene data if necessary
+	void* data = nullptr;
+	VK_CHECK(vmaMapMemory(allocator_, gpuSceneDataBuffer.allocation, &data));
+	auto* sceneUniformData = static_cast<GPUSceneData*>(data);
+	*sceneUniformData = sceneData;
+	vmaUnmapMemory(allocator_, gpuSceneDataBuffer.allocation);
 
     // Create and update descriptor set for the scene data buffer
     VkDescriptorSet globalDescriptor = GetCurrentFrame().frameDescriptors_.Allocate(
@@ -1375,35 +1384,17 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
         gpuSceneDataDescriptorLayout_
     );
 
-    VkDescriptorWriter writer;
-    writer.WriteBuffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    writer.UpdateSet(vd.device, globalDescriptor);
-
-    // Prepare rendering attachments for color and depth
-    VkRenderingAttachmentInfo colorAttachment = VkInfo::RenderAttachmentInfo(drawImage_.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    VkRenderingAttachmentInfo depthAttachment = VkInfo::DepthAttachmentInfo(depthImage_.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-    VkRenderingInfo renderInfo = VkInfo::RenderInfo(drawExtent_, &colorAttachment, &depthAttachment);
+	VkDescriptorWriter writer;
+	writer.WriteBuffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	writer.UpdateSet(vd.device, globalDescriptor);
 
     // Begin rendering
     vkCmdBeginRendering(cmd, &renderInfo);
 
-    // Bind the mesh pipeline
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline_);
+	// Bind the mesh pipeline
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline_);
 
-    // Set dynamic viewport and scissor
-    VkViewport viewport = {};
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width = drawExtent_.width;
-    viewport.height = drawExtent_.height;
-    viewport.minDepth = 0.f;
-    viewport.maxDepth = 1.f;
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor = {};
-    scissor.offset = {0, 0};
-    scissor.extent = drawExtent_;
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
+	SetViewportAndScissor(cmd, drawExtent_);
 
     // Bind a fallback texture (error checkerboard image)
     VkDescriptorSet imageSet = GetCurrentFrame().frameDescriptors_.Allocate(vd.device, singleImageDescriptorLayout_);
@@ -1414,87 +1405,89 @@ void VkEngine::DrawGeometry(VkCommandBuffer cmd)
     }
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout_, 0, 1, &imageSet, 0, nullptr);
 
-	for (const RenderObject& draw : mainDrawContext.OpaqueSurfaces)
+	//defined outside of the draw function, this is the state we will try to skip
+	MaterialPipeline* lastPipeline = nullptr;
+	MaterialInstance* lastMaterial = nullptr;
+	VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
+
+    auto draw = [&](const RenderObject& r)
+    {
+	    if (r.material != lastMaterial)
+	    {
+		    lastMaterial = r.material;
+		    //rebind pipeline and descriptors if the material changed
+		    if (r.material->pipeline != lastPipeline)
+		    {
+			    lastPipeline = r.material->pipeline;
+			    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipeline);
+			    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 0, 1,
+			                            &globalDescriptor, 0, nullptr);
+
+		    	SetViewportAndScissor(cmd, drawExtent_);
+		    }
+
+		    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 1, 1,
+		                            &r.material->materialSet, 0, nullptr);
+	    }
+	    //rebind index buffer if needed
+	    if (r.indexBuffer != lastIndexBuffer)
+	    {
+		    lastIndexBuffer = r.indexBuffer;
+		    vkCmdBindIndexBuffer(cmd, r.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+	    }
+	    // calculate final mesh matrix
+	    GPUDrawPushConstants pushConstants{
+		    .worldMatrix = r.transform,
+		    .vertexBuffer = r.vertexBufferAddress
+	    };
+
+	    vkCmdPushConstants(cmd, r.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
+	                       sizeof(GPUDrawPushConstants), &pushConstants);
+
+	    vkCmdDrawIndexed(cmd, r.indexCount, 1, r.firstIndex, 0, 0);
+	    //stats
+	    stats.drawcallCount++;
+	    stats.triCout += r.indexCount / 3;
+    };
+
+	for (auto& r : mainDrawContext.OpaqueSurfaces)
 	{
-
-		vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
-		vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,draw.material->pipeline->layout, 0,1, &globalDescriptor,0,nullptr );
-		vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,draw.material->pipeline->layout, 1,1, &draw.material->materialSet,0,nullptr );
-
-		vkCmdBindIndexBuffer(cmd, draw.indexBuffer,0,VK_INDEX_TYPE_UINT32);
-
-		GPUDrawPushConstants pushConstants;
-		pushConstants.vertexBuffer = draw.vertexBufferAddress;
-		pushConstants.worldMatrix = draw.transform;
-		vkCmdPushConstants(cmd,draw.material->pipeline->layout ,VK_SHADER_STAGE_VERTEX_BIT,0, sizeof(GPUDrawPushConstants), &pushConstants);
-
-		vkCmdDrawIndexed(cmd,draw.indexCount,1,draw.firstIndex,0,0);
+		draw(r);
 	}
+
+	for (auto& r : mainDrawContext.TransparentSurfaces)
+	{
+		draw(r);
+	}
+
+	// Clear surfaces after drawing
+	mainDrawContext.OpaqueSurfaces.clear();
+	mainDrawContext.TransparentSurfaces.clear();
 
     // End rendering
     vkCmdEndRendering(cmd);
 }
-
-void updateCamera(Input& input, glm::vec3& cameraPosition, const float deltaTime) {
-	const float movementSpeed = 5.0f; // Adjust movement speed to your preference
-	auto direction = glm::vec3(0.0f);
-
-	// Keyboard movement (WASD)
-	if (input.isKeyPressed(KeyboardButton::Keys::W)) {
-		direction.z += 1.0f; // Move forward
-	}
-	if (input.isKeyPressed(KeyboardButton::Keys::S)) {
-		direction.z -= 1.0f; // Move backward
-	}
-	if (input.isKeyPressed(KeyboardButton::Keys::A)) {
-		direction.x -= 1.0f; // Move left
-	}
-	if (input.isKeyPressed(KeyboardButton::Keys::D)) {
-		direction.x += 1.0f; // Move right
-	}
-
-	// Controller movement (Left stick)
-	const auto& controller = input.controllers[0]; // Assuming single controller
-	if (controller.isConnected) {
-		// Normalize left stick input for X and Y axes
-		float leftStickX = controller.currentState.leftStickX / 32767.0f;
-		float leftStickY = controller.currentState.leftStickY / 32767.0f;
-
-		// Check if stick is outside a dead zone
-		const float deadZone = 0.2f;
-		if (fabs(leftStickX) > deadZone) {
-			direction.x += leftStickX;
-		}
-		if (fabs(leftStickY) > deadZone) {
-			direction.z -= leftStickY; // Invert Y-axis for forward/backward
-		}
-	}
-
-	// Normalize direction and apply movement speed
-	if (glm::length(direction) > 0.0f) {
-		direction = glm::normalize(direction);
-		cameraPosition += direction * movementSpeed * deltaTime;
-	}
-}
-
 
 void VkEngine::InitDefaultData()
 {
     ZoneScoped;
 
     // Load basic mesh
-	testMeshes = VkLoader::LoadGltfMeshes(this, "Models\\basicmesh.glb", true, true).value();
+	// testMeshes = VkLoader::LoadGltfMeshes(this, "Models\\basicmesh.glb", TODO).value();
 
     // Create 1x1 default textures (white, grey, black)
     {
         static u32 white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
-        whiteImage_ = CreateImageData(&white, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+        whiteImage_ = CreateImageData(&white, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_UNORM,
+        	VK_IMAGE_USAGE_SAMPLED_BIT);
 
         static u32 grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
-        greyImage_ = CreateImageData(&grey, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+        greyImage_ = CreateImageData(&grey, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_UNORM,
+        	VK_IMAGE_USAGE_SAMPLED_BIT);
 
         static u32 black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
-        blackImage_ = CreateImageData(&black, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+        blackImage_ = CreateImageData(&black, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_UNORM,
+        	VK_IMAGE_USAGE_SAMPLED_BIT);
     }
 
     // Create checkerboard error texture
@@ -1502,7 +1495,7 @@ void VkEngine::InitDefaultData()
         static u32 magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
         static u32 black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
 
-        SafeArray<u32, static_cast<size_t>(16 * 16)> pixels{};
+        SafeArray<u32, 16 * 16> pixels;
         for (int y = 0; y < 16; y++)
         {
             for (int x = 0; x < 16; x++)
@@ -1580,77 +1573,96 @@ void VkEngine::InitDefaultData()
         );
     }
 
-    for (const auto& m : testMeshes)
-    {
-	    auto newNode            = std::make_shared<MeshNode>();
-	    newNode->mesh           = m;
-	    newNode->localTransform = glm::mat4{1.f};
-	    newNode->worldTransform = glm::mat4{1.f};
-
-	    for (auto& s : newNode->mesh->surfaces)
-	    {
-		    s.material = std::make_shared<GLTFMaterial>(defaultData); // Assign default material
-	    }
-
-	    loadedNodes[m->name] = std::move(newNode);
-    }
-
     // Add final destruction callbacks for all resources
     mainDeletionQueue_.pushFunction([=, this]()
     {
         vkDestroySampler(vd.device, defaultSamplerNearest_, nullptr);
         vkDestroySampler(vd.device, defaultSamplerLinear_, nullptr);
 
-        DestroyImage(whiteImage_);
-        DestroyImage(greyImage_);
-        DestroyImage(blackImage_);
-        DestroyImage(errorCheckerboardImage_);
+        VkImages::DestroyImage(whiteImage_, vd.device, allocator_);
+        VkImages::DestroyImage(greyImage_, vd.device, allocator_);
+        VkImages::DestroyImage(blackImage_, vd.device, allocator_);
+        VkImages::DestroyImage(errorCheckerboardImage_, vd.device, allocator_);
 		},
 		"Images");
 }
 
-
-
 void VkEngine::UpdateScene()
 {
 	mainDrawContext.OpaqueSurfaces.clear();
+	Timer sceneTimer("Update Scene", timingResults);
 
-	// Draw the Suzanne (monkey head) mesh node
-	loadedNodes["Suzanne"]->Draw(glm::mat4{1.f}, mainDrawContext);
+	// Accumulate the delta time
+	accumulatedTime += deltaTime;
+	// Increment the frame count
+	frameCount++;
 
-	aspectRatio = static_cast<float>(drawExtent_.width) / static_cast<float>(drawExtent_.height > 0 ? drawExtent_.height : 1);
-	// Setup camera
-	sceneData.view = glm::translate(cameraPosition);
-	sceneData.proj = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
-	sceneData.proj[1][1] *= -1; // Invert Y for Vulkan
+	// Check if 0.5 seconds have passed
+	if (accumulatedTime >= 0.5) {
+		// Calculate the average FPS over the 0.5-second interval
+		double fps = frameCount / accumulatedTime;
 
-	sceneData.viewproj = sceneData.proj * sceneData.view;
+		// Round the FPS to one decimal place
+		displayedFPS = std::round(fps * 10.0) / 10.0;
 
-	// Set default lighting
-	sceneData.ambientColor = glm::vec4(0.1f);
-	sceneData.sunlightColor = glm::vec4(1.f);
-	sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
-
-	// Optional: Draw a line of cubes
-	for (int x = -3; x < 3; x++)
-	{
-		glm::mat4 scale = glm::scale(glm::vec3{0.2f});
-		glm::mat4 translation = glm::translate(glm::vec3{x, 1, 0});
-		loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
+		// Reset the counters for the next interval
+		accumulatedTime = 0.0;
+		frameCount = 0;
 	}
 
-	if (modelDrawn)
+	camera_.Update(deltaTime);
+
+	// Get the updated view matrix
+	glm::mat4 view = camera_.GetViewMatrix();
+
+	// Calculate the aspect ratio for projection
+	aspectRatio = static_cast<f32>(windowContext_->screenWidth) / static_cast<f32>(windowContext_->screenWidth > 0 ? windowContext_->screenHeight : 1);
+
+	// Correct the perspective projection matrix
+	glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
+	projection[1][1] *= -1; // Correct for Vulkan Y-axis inversion
+
+	// Update scene data matrices
+	sceneData.view = view;
+	sceneData.proj = projection;
+	sceneData.viewproj = projection * view;
+
+    // Set default lighting for the scene
+    sceneData.ambientColor = glm::vec4(0.1f);  // Set ambient light color
+    sceneData.sunlightColor = glm::vec4(1.f);  // Set sunlight color
+    sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);  // Sunlight direction in the scene
+
+    // Draw the Suzanne (monkey head) mesh node
+    // loadedNodes["Suzanne"]->Draw(glm::mat4{1.f}, mainDrawContext);
 	{
-		LOG(INFO, "Number of render objects: ", mainDrawContext.OpaqueSurfaces.size());
-		modelDrawn = false;
+		Timer drawTimer("Draw Structure", timingResults);
+		loadedScenes["structure"]->Draw(glm::mat4{ 1.f }, mainDrawContext);
 	}
+
+    // // Optional: Draw a line of cubes for visual debugging or testing
+    // for (int x = -3; x < 3; x++)
+    // {
+    //     glm::mat4 scale = glm::scale(glm::vec3{0.2f});  // Set cube scale
+    //     glm::mat4 translation = glm::translate(glm::vec3{x, 1, 0});  // Set cube position
+    //     loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);  // Draw the cube
+    // }
+
+    // Log the number of rendered objects if a model was drawn
+    if (modelDrawn)
+    {
+        LOG(INFO, "Number of opaque objects: ", mainDrawContext.OpaqueSurfaces.size());
+    	LOG(INFO, "Number of transparant objects: ", mainDrawContext.TransparentSurfaces.size());
+        modelDrawn = false;
+    }
 }
+
 
 void VkEngine::Draw()
 {
-	TracyVkZone(tracyContext_, immCommandBuffer_, "Frame Start");
-	UpdateScene();
-    VK_CHECK(vkWaitForFences(vd.device, 1, &GetCurrentFrame().renderFence_, true, 1000000000));
+	Timer drawTime("DrawTime", timingResults);
+	TracyVkZone(tracyContext_, GetCurrentFrame().mainCommandBuffer_, "Frame Start"); // TODO: this crashes when Tracy is attached
+    VK_CHECK(vkWaitForFences(vd.device, 1, &GetCurrentFrame().renderFence_, true, UINT64_MAX));
+
     GetCurrentFrame().deletionQueue_.Flush();
 	GetCurrentFrame().frameDescriptors_.ClearPools(vd.device);
 
@@ -1669,43 +1681,45 @@ void VkEngine::Draw()
 
     VkCommandBufferBeginInfo cmdBeginInfo = VkInfo::CommandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-	drawExtent_.height = static_cast<u32>(std::min(static_cast<float>(swapchainExtent_.height), static_cast<float>(drawImage_.imageExtent.height)) * renderScale);
-	drawExtent_.width = static_cast<u32>(std::min(static_cast<float>(swapchainExtent_.width), static_cast<float>(drawImage_.imageExtent.width)) * renderScale);
+	drawExtent_.height = static_cast<u32>(
+		std::min(static_cast<f32>(swapchainExtent_.height), static_cast<f32>(drawImage_.imageExtent.height)) * renderScale);
+	drawExtent_.width = static_cast<u32>(
+		std::min(static_cast<f32>(swapchainExtent_.width), static_cast<f32>(drawImage_.imageExtent.width)) * renderScale);
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
 	// Transition draw image to GENERAL layout for compute shader
-	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+	VkImages::TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
 	// Draw the background using compute shader
 	DrawBackground(cmd);
 
 	// Transition draw image for color attachment
-	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	VkImages::TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	// Transition depth image for depth attachment
-	TransitionImage(cmd, depthImage_.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+	VkImages::TransitionImage(cmd, depthImage_.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	// Draw geometry
 	DrawGeometry(cmd);
 
 	// Transition the draw image to TRANSFER_SRC_OPTIMAL layout for copying
-	TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	VkImages::TransitionImage(cmd, drawImage_.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 	// Transition the swapchain image to TRANSFER_DST_OPTIMAL layout for copying
-	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	VkImages::TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	// Copy image from drawImage_.image to swapchainImages_[swapchainImageIndex]
-	CopyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], drawExtent_, swapchainExtent_);
+	VkImages::CopyImageToImage(cmd, drawImage_.image, swapchainImages_[swapchainImageIndex], drawExtent_, swapchainExtent_);
 
 	// Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL layout for rendering ImGui
-	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	VkImages::TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	// Draw the ImGui interface
 	DrawImGui(cmd, swapchainImageViews_[swapchainImageIndex]);
 
 	// Transition the swapchain image to PRESENT_SRC_KHR layout for presentation
-	TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	VkImages::TransitionImage(cmd, swapchainImages_[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -1735,6 +1749,7 @@ void VkEngine::Draw()
 	{
 		resizeRequested_ = true;
 	}
+
     frameNumber_++;
 	FrameMark;
 }

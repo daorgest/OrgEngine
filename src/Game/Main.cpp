@@ -23,38 +23,19 @@ void InitConsole()
     SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 }
 
-int main(int argc, char** argv)
+int main()
 {
 	Logger::Init();
  #ifdef DEBUG
      InitConsole();
  #endif
-
     Application app;
-	// Vector<int> lol;
-	//
-	// lol.PushBack(1);
-	// lol.PushBack(2);
-	// lol.PushBack(3);
-	// lol.PushBack(2);
-	// lol.PushBack(3);
-	// lol.PushBack(2);
-	// lol.PushBack(3);
-	// lol.PushBack(2);
-	// lol.PushBack(3);
-	// lol.PushBack(2);
-	// lol.PushBack(3);
-	// lol.PushBack(2);
-	// lol.PushBack(3);
-	//
-	// for (int i = 0; i < lol.Size(); i++)
-	// {
-	// 	LOG(INFO, "Itemms[", i ,"] " ,lol[i]);
-	// }
+
 
 	app.Run();
-
+#ifdef DEBUG
 	std::cin.get();
+#endif
     return 0;
 }
 #endif

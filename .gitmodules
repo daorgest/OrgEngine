@@ -23,3 +23,6 @@
 [submodule "libs/3rdParty/sdl3"]
 	path = libs/3rdParty/sdl3
 	url = https://github.com/libsdl-org/SDL.git
+[submodule "libs/3rdParty/DirectXTex"]
+	path = libs/3rdParty/DirectXTex
+	url = https://github.com/microsoft/DirectXTex.git

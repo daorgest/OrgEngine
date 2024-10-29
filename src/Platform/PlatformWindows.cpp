@@ -1,6 +1,9 @@
 #include "PlatformWindows.h"
+
+#include "../Core/InputHandler.h"
 #ifdef VULKAN_BUILD
 #include <dwmapi.h>
+#include <imgui.h>
 
 #include "../Core/Timer.h"
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -20,34 +23,59 @@ namespace Platform
 
     LRESULT CALLBACK Win32::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     {
-        if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp))
-            return true;
-
-        LRESULT rez = 0;
-
+        if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp)) return true;
         switch (msg)
         {
-        case WM_SYSKEYDOWN:
-        case WM_KEYDOWN:
-        case WM_SYSKEYUP:
-        case WM_KEYUP:
-        case WM_MOUSEMOVE:
-        case WM_LBUTTONDOWN:
-        case WM_LBUTTONUP:
-        case WM_RBUTTONDOWN:
-        case WM_RBUTTONUP:
-            break;
-        case WM_SETFOCUS:
-            LOG(INFO, "Window in focus");
-            break;
-        case WM_KILLFOCUS:
-            LOG(INFO, "Window out of focus");
-            break;
-        default:
-            rez = DefWindowProc(hwnd, msg, wp, lp);
+        	case WM_SETFOCUS:
+        		LOG(INFO, "Window in focus");
+        		input.focused = true;
+        		break;
+        	case WM_KILLFOCUS:
+        		LOG(INFO, "Window out of focus");
+        		input.focused = false;
+        		resetInput(input);
+        		break;
+        	case WM_SYSKEYUP:
+			case WM_KEYUP:
+				if (wp < Keyboard::KEYS_COUNT)
+				{
+					processEventButton(input.keyboard[static_cast<Keyboard::Keys>(wp)], false);
+				}
+        		break;
+        	case WM_SYSKEYDOWN:
+			case WM_KEYDOWN:
+				if (wp == VK_ESCAPE) PostQuitMessage(0);
+        		if (wp < Keyboard::KEYS_COUNT)
+        		{
+        			processEventButton(input.keyboard[static_cast<Keyboard::Keys>(wp)], true);
+        		}
+        		break;
+        	case WM_MOUSEMOVE:
+        		input.cursorX = LOWORD(lp);
+        		input.cursorY = HIWORD(lp);
+        		break;
+        	case WM_LBUTTONDOWN:
+        		processEventButton(input.mouseButtons[Mouse::Mouse_Left], true);
+        	break;
+        	case WM_RBUTTONDOWN:
+        		processEventButton(input.mouseButtons[Mouse::Mouse_Right], true);
+        		break;
+        	case WM_LBUTTONUP:
+        		processEventButton(input.mouseButtons[Mouse::Mouse_Left], false);
+        		break;
+        	case WM_RBUTTONUP:
+        		processEventButton(input.mouseButtons[Mouse::Mouse_Right], false);
+        		break;
+        	case WM_MOUSEWHEEL:
+        		input.scrollDelta = GET_WHEEL_DELTA_WPARAM(wp);
+                // Convert to a more manageable delta (e.g., 1 for up, -1 for down)
+                input.scrollDelta = (input.scrollDelta > 0) ? 1.0f : -1.0f;
+        		break;
+        	case WM_QUIT:
+        	case WM_DESTROY: PostQuitMessage(0); break;
+			default: return DefWindowProc(hwnd, msg, wp, lp);
         }
-
-        return rez;
+        return 0;
     }
 
     bool Win32::Init() const
@@ -100,23 +128,6 @@ namespace Platform
             return false;
         }
         return true;
-    }
-
-    double Win32::GetAbsoluteTime()
-    {
-        static LARGE_INTEGER frequency;
-        static BOOL useHighResTimer = QueryPerformanceFrequency(&frequency);
-
-        if (useHighResTimer)
-        {
-            LARGE_INTEGER now;
-            QueryPerformanceCounter(&now);
-            return static_cast<double>(now.QuadPart) / frequency.QuadPart;
-        }
-        else
-        {
-            return static_cast<double>(GetTickCount64()) / 1000.0;
-        }
     }
 }
 #endif

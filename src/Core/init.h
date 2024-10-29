@@ -1,14 +1,6 @@
   #pragma once
 
 // Standard Library Includes
-#include <deque>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <span>
-#include <string>
-#include <thread>
-#include <vector>
 
 // Project Includes
 #include "Logger.h"
@@ -17,6 +9,8 @@
 // Platform-Specific Includes
 #ifdef _WIN32
     #define NOMINMAX 1
+#undef LoadImage
+
     #define WIN32_LEAN_AND_MEAN
     #include <Windows.h>
 #endif

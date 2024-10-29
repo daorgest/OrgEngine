@@ -7,7 +7,6 @@
 
 
 #include "../Core/Audio.h"
-#include "../Core/InputHandler.h"
 #include "../Platform/PlatformWindows.h"
 
 #ifdef OPENGL_BUILD
@@ -30,8 +29,6 @@ public:
 	~Application();
 
 	void Run();
-	void HandleInput(Input& input);
-	void Update();
 	void Render();
 
 private:
@@ -39,11 +36,8 @@ private:
 	void CleanupEngine();
 	void LoadAudio();
 	void PlaySoundIfNeeded();
-	void HandleControllerInput(Input& input);
-	void HandleKeyboardAndMouseInput(Input& input);
 
-	Platform::WindowContext windowContext_{static_cast<u32>(GetSystemMetrics(SM_CXSCREEN)),
-		static_cast<u32>(GetSystemMetrics(SM_CYSCREEN))};
+	Platform::WindowContext windowContext_;
 #ifdef VULKAN_BUILD
 	Platform::Win32 win32_{&windowContext_};  // Stack allocation for Win32, i hope this happens first LMAO
 	GraphicsAPI::Vulkan::VkEngine vkEngine_{&windowContext_};  // Stack allocation for Vulkan

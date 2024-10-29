@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(USE_DIRECTX11 "Use DirectX 11 Renderer" OFF)
 option(USE_VULKAN "Use Vulkan Renderer" ON)
 option(USE_OPENGL "Use OpenGL Renderer" OFF)
+option(ASAN_ENABLED "Build this target with AddressSanitizer" ON)
 
 # Ensure only one renderer is enabled
 if((USE_VULKAN AND USE_DIRECTX11) OR (USE_VULKAN AND USE_OPENGL) OR (USE_DIRECTX11 AND USE_OPENGL))
@@ -19,7 +20,9 @@ endif()
 
 # Define executable
 add_executable(OrgEngine
-        src/Core/Vector.h)
+        src/Core/Memory.h
+        src/Renderer/Camera.cpp
+)
 
 # Platform and renderer-specific definitions
 target_compile_definitions(OrgEngine PRIVATE UNICODE _UNICODE NOMINMAX)
@@ -129,7 +132,7 @@ elseif(USE_OPENGL)
 endif()
 
 # Include ImGui directories and sources
-target_include_directories(OrgEngine PRIVATE "${IMGUI_DIR}")
+target_include_directories(OrgEngine PRIVATE "${IMGUI_DIR}" "libs/3rdParty/stb/")
 target_sources(OrgEngine PRIVATE ${IMGUI_SOURCES})
 assign_source_groups(${IMGUI_SOURCES})
 

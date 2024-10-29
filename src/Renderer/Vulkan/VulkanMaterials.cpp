@@ -67,7 +67,7 @@ void GLTFMetallicRoughness::BuildPipelines(VkEngine* engine, VkDevice device)
 		.SetMultisamplingNone()
 		.DisableBlending()
 		.EnableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
-		.SetColorAttachmentFormat(engine->swapchainImageFormat_)
+		.SetColorAttachmentFormat(engine->drawImage_.imageFormat)
 		.SetDepthFormat(engine->depthImage_.imageFormat)
 		.Layout(newLayout);
 
@@ -91,7 +91,7 @@ MaterialInstance GLTFMetallicRoughness::WriteMaterial(VkDevice device, MaterialP
 	{
 		.pipeline = (pass == MaterialPass::Transparent) ? &transparentPipeline : &opaquePipeline,
 		.materialSet = descriptorAllocator.Allocate(device, materialLayout),
-		.passType = pass,
+		.passType = pass
 	};
 
 	// Clear previous writes and prepare to write new resources

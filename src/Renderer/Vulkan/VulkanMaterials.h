@@ -15,7 +15,7 @@ namespace GraphicsAPI::Vulkan {
 namespace GraphicsAPI::Vulkan
 {
 	// GLTFMaterial class handling the metallic-roughness material model
-	class GLTFMetallicRoughness : public VkLoader
+	class GLTFMetallicRoughness final : public VkLoader
 	{
 	public:
 		GLTFMetallicRoughness() = default;

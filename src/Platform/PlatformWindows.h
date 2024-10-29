@@ -15,7 +15,6 @@ namespace Platform
         explicit Win32(WindowContext* windowContext, const std::wstring& platName = L" - Windows");
         ~Win32();
         bool Init() const;
-        static double GetAbsoluteTime();
 
         Win32(const Win32&) = delete;
         Win32& operator=(const Win32&) = delete;
@@ -24,7 +23,7 @@ namespace Platform
     private:
         static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
         const wchar_t* appName_ = L"OrgEngine - Vulkan";
-        WindowContext*				   wc_;
+        WindowContext* wc_;
     };
 }
 #endif

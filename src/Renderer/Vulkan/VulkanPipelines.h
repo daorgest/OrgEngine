@@ -29,7 +29,7 @@ namespace GraphicsAPI::Vulkan
 	struct PipelineData
 	{
 		ShaderStages shaderStages;
-		PipelineConfig config{};
+		PipelineConfig config;
 	};
 
 	// debug stuff

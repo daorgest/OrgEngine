@@ -2,9 +2,6 @@
 #include <iostream>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
-#if defined(_WIN32) && defined(NDEBUG)
-#include <windows.h>
-#endif
 
 // Platform-specific DebugBreak macros
 #ifdef _WIN32
@@ -29,15 +26,6 @@ enum DateFormat
     DATE_FORMAT_12H,
     DATE_FORMAT_24H
 };
-
-inline void LogDebugBreak()
-{
-#ifdef _MSC_VER
-    __debugbreak();
-#else
-    __builtin_trap();
-#endif
-}
 
 namespace Logger
 {

@@ -53,39 +53,42 @@ VkPipeline PipelineBuilder::BuildPipeline(VkDevice device, const PipelineData& d
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
     };
 
-    VkGraphicsPipelineCreateInfo pipelineInfo = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-    pipelineInfo.pNext = &data.config.renderInfo;
-
-    pipelineInfo.stageCount = static_cast<u32>(data.shaderStages.stages.size());
-    pipelineInfo.pStages = data.shaderStages.stages.data();
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &data.config.inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &data.config.rasterizer;
-    pipelineInfo.pMultisampleState = &data.config.multisampling;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDepthStencilState = &data.config.depthStencil;
-    pipelineInfo.layout = data.config.layout;
-
-    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamicInfo = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = 2,
-        .pDynamicStates = dynamicStates
+    VkGraphicsPipelineCreateInfo pipelineInfo = {
+    	.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+    	.pNext = &data.config.renderInfo,
+    	.stageCount = static_cast<u32>(data.shaderStages.stages.size()),
+    	.pStages = data.shaderStages.stages.data(),
+    	.pVertexInputState = &vertexInputInfo,
+    	.pInputAssemblyState = &data.config.inputAssembly,
+    	.pViewportState = &viewportState,
+    	.pRasterizationState = &data.config.rasterizer,
+    	.pMultisampleState = &data.config.multisampling,
+    	.pDepthStencilState = &data.config.depthStencil,
+    	.pColorBlendState = &colorBlending,
+    	.layout = data.config.layout,
     };
 
-    pipelineInfo.pDynamicState = &dynamicInfo;
+	VkDynamicState state[] = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR
+	};
+
+	VkPipelineDynamicStateCreateInfo dynamicInfo = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+		.dynamicStateCount = 2,
+		.pDynamicStates = &state[0]
+	};
+
+	pipelineInfo.pDynamicState = &dynamicInfo;
 
     VkPipeline pipeline;
-	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline)
-	!= VK_SUCCESS)
-		{
-			fmt::println("failed to create pipeline");
-			return VK_NULL_HANDLE; // failed to create graphics pipeline
-		} else
-		{
-			return pipeline;
-		}
+	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo,
+		nullptr, &pipeline) != VK_SUCCESS)
+	{
+		LOG(ERR, "Failed to create pipeline");
+		return VK_NULL_HANDLE;
+	}
+	return pipeline;
 }
 
 PipelineBuilder& PipelineBuilder::SetShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader)
@@ -105,6 +108,7 @@ PipelineBuilder& PipelineBuilder::SetInputTopology(VkPrimitiveTopology topology)
 	return *this;
 }
 
+// Raster states
 PipelineBuilder& PipelineBuilder::SetPolygonMode(VkPolygonMode mode)
 {
     data.config.rasterizer.polygonMode = mode;
@@ -119,12 +123,12 @@ PipelineBuilder& PipelineBuilder::SetCullMode(VkCullModeFlags cullMode, VkFrontF
 	return *this;
 }
 
+// multisample state
 PipelineBuilder& PipelineBuilder::SetMultisamplingNone()
 {
     data.config.multisampling = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
         .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-        // .sampleShadingEnable = VK_FALSE,
         .minSampleShading = 1.0f,
         .pSampleMask = nullptr,
         .alphaToCoverageEnable = VK_FALSE,

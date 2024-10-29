@@ -11,19 +11,19 @@
 #include <span>
 #include <string>
 #include <utility>
+
 #include "../../Core/Array.h"
 #include "../../Core/Vector.h"
 #include "../../Platform/WindowContext.h"
+#undef LoadImage
 
-#include <backends/imgui_impl_vulkan.h>
 #include <vk_mem_alloc.h>
-#include <vulkan/vk_enum_string_helper.h>
-#include <vulkan/vulkan.h>
-
-
+#include <backends/imgui_impl_vulkan.h>
 #include <fmt/core.h>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
+#include <vulkan/vk_enum_string_helper.h>
+#include <vulkan/vulkan.h>
 
 #ifdef DEBUG
 #define VK_CHECK(x)                                                                                                    \
@@ -32,7 +32,7 @@
         VkResult err = x;                                                                                              \
         if (err != VK_SUCCESS)                                                                                         \
         {                                                                                                              \
-            fmt::print("Vulkan error at {}:{}: {}\n", __FILE__, __LINE__, string_VkResult(err));                      \
+            fmt::print("Vulkan error at {}:{}: {}\n", __FILE__, __LINE__, string_VkResult(err));					   \
             abort();                                                                                                   \
         }                                                                                                              \
     }                                                                                                                  \
@@ -44,15 +44,14 @@
 
 namespace GraphicsAPI::Vulkan
 {
-
-	struct VulkanData
+	inline struct VulkanData
 	{
 		VkInstance				 instance{VK_NULL_HANDLE};
 		VkDebugUtilsMessengerEXT dbgMessenger{VK_NULL_HANDLE};
 		VkPhysicalDevice		 physicalDevice{VK_NULL_HANDLE};
 		VkDevice				 device{VK_NULL_HANDLE};
 		VkSurfaceKHR			 surface{VK_NULL_HANDLE};
-	};
+	} vd;
 
 	struct AllocatedBuffer
 	{
@@ -64,9 +63,9 @@ namespace GraphicsAPI::Vulkan
 	struct Vertex
 	{
 		glm::vec3 position;
-		float	  uv_x;
+		f32	  uv_x;
 		glm::vec3 normal;
-		float	  uv_y;
+		f32	  uv_y;
 		glm::vec4 color;
 	};
 
