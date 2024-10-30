@@ -68,15 +68,15 @@ struct ButtonState
 // Struct to manage overall input (keyboard, Xbox, mouse)
 struct Input
 {
-	SafeArray<ButtonState, Keyboard::KEYS_COUNT> keyboard;  // Keyboard buttons
+	SafeArray<ButtonState, Keyboard::KEYS_COUNT>       keyboard;     // Keyboard buttons
 	SafeArray<ButtonState, Mouse::MOUSE_BUTTONS_COUNT> mouseButtons; // Mouse buttons
-	SafeArray<ButtonState, Xbox::XBOX_BUTTONS_COUNT> xboxButtons;   // Xbox buttons
+	SafeArray<ButtonState, Xbox::XBOX_BUTTONS_COUNT>   xboxButtons;  // Xbox buttons
 
 
-    f32 cursorX = 0;
-    f32 cursorY = 0;
-	f32 lastX = 0;
-	f32 lastY = 0;
+	f32 cursorX     = 0;
+	f32 cursorY     = 0;
+	f32 lastX       = 0;
+	f32 lastY       = 0;
 	i16 scrollDelta = 0;
 
 	f32 thumbLeftX{};
@@ -86,8 +86,9 @@ struct Input
 	f32 leftTrigger{};
 	f32 rightTrigger{};
 
-	bool  focused         = false; // True if the application window is focused
-	bool  usingController = false; // True if the user is using a controller
+	bool focused         = false; // True if the application window is focused
+	bool mouseLookActive = true;
+	bool usingController = false; // True if the user is using a controller
 };
 
 // Process input after handling events

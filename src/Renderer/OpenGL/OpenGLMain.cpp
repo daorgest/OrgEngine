@@ -6,15 +6,22 @@ OpenGLMain::OpenGLMain(Platform::WindowContext* wc) : wc_(wc) {}
 
 OpenGLMain::~OpenGLMain()
 {
+	Cleanup();
+}
+
+void OpenGLMain::Cleanup()
+{
 	// Clean up the OpenGL context and window
 	if (wc_->sdlContext)
 	{
 		SDL_GL_DestroyContext(wc_->sdlContext);
+		wc_->sdlContext = nullptr;
 	}
 
 	if (wc_->sdlWindow)
 	{
 		SDL_DestroyWindow(wc_->sdlWindow);
+		wc_->sdlWindow = nullptr;
 	}
 
 	// Quit SDL subsystems
@@ -33,8 +40,8 @@ bool OpenGLMain::Init() const
 	// Create the SDL window with OpenGL context
 	wc_->sdlWindow = SDL_CreateWindow(
 		"OpenGL with SDL3",
-		wc_->screenWidth,
-		wc_->screenHeight,
+		1920,
+		1080,
 		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 
 	if (!wc_->sdlWindow)
@@ -67,9 +74,14 @@ bool OpenGLMain::Init() const
 	return true;
 }
 
-void OpenGLMain::FramebufferSizeCallback(Platform::WindowContext* window, int width, int height) const
+void OpenGLMain::FramebufferSizeCallback(int width, int height) const
 {
-	glViewport(0, 0, width, height);
+	if (width > 0 && height > 0)
+	{
+		wc_->screenWidth = width;
+		wc_->screenHeight = height;
+		glViewport(0, 0, width, height);
+	}
 }
 
 void OpenGLMain::Render() const
@@ -105,7 +117,7 @@ void OpenGLMain::RenderLoop() const
 			{
 				int newWidth = event.window.data1;
 				int newHeight = event.window.data2;
-				glViewport(0, 0, newWidth, newHeight);  // Update the viewport when the window is resized
+				FramebufferSizeCallback(newWidth, newHeight);
 			}
 		}
 

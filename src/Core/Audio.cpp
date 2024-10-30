@@ -35,6 +35,7 @@ void Audio::LoadSound(const std::filesystem::path& filePath)
 {
     if (!exists(filePath))
     {
+    	LOG(WARN, "Audio file not found: ", filePath.string());
         return;
     }
 
@@ -69,6 +70,10 @@ void Audio::PlayGameSound(FMOD::Sound* sound)
 
 void Audio::StartBackgroundPlayback(FMOD::Sound* sound)
 {
+	if (!sound)
+	{
+		return;
+	}
     shouldStopPlayback = false;
     audioThread = std::thread(&Audio::BackgroundPlayback, this, sound);
 

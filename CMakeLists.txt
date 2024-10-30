@@ -7,8 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Renderer selection options (only one should be TRUE)
 option(USE_DIRECTX11 "Use DirectX 11 Renderer" OFF)
-option(USE_VULKAN "Use Vulkan Renderer" ON)
-option(USE_OPENGL "Use OpenGL Renderer" OFF)
+option(USE_VULKAN "Use Vulkan Renderer" OFF)
+option(USE_OPENGL "Use OpenGL Renderer" ON)
 option(ASAN_ENABLED "Build this target with AddressSanitizer" ON)
 
 # Ensure only one renderer is enabled

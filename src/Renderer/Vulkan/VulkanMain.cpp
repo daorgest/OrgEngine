@@ -83,16 +83,30 @@ void VkEngine::Run()
 
 		// Process
 		camera_.velocity = glm::vec3(0.0f);
-
+		if (input.mouseLookActive)
+		{
+			// processing mouse controls
+			if (input.mouseButtons[Mouse::Mouse_Left].pressed)
+			{
+				camera_.yaw =+ input.cursorX / 200.f;
+				camera_.pitch =- input.cursorY / 200.f;
+			}
+		}
 		if (input.keyboard[Keyboard::W].held) { camera_.velocity.z = -1.f; }
 		if (input.keyboard[Keyboard::A].held) { camera_.velocity.x = -1.f; }
 		if (input.keyboard[Keyboard::S].held) { camera_.velocity.z = 1.f; }
 		if (input.keyboard[Keyboard::D].held) { camera_.velocity.x = 1.f; }
 
-		if (input.mouseButtons[Mouse::Mouse_Left].pressed)
+
+		if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) || ImGui::IsAnyItemHovered())
 		{
-			camera_.yaw =+ input.cursorX / 200.f;
-			camera_.pitch =- input.cursorY / 200.f;
+			// Disable mouse look if interacting with ImGui elements
+			input.mouseLookActive = false;
+		}
+		else
+		{
+			// Enable mouse look when not interacting with ImGui
+			input.mouseLookActive = true;
 		}
 
 		// Start ImGui new frame
@@ -138,180 +152,117 @@ void VkEngine::ResizeSwapchain()
 
 void VkEngine::RenderQuickStatsImGui()
 {
-	ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
+    ImGui::Text("Window Resolution: %ux%u", windowContext_->screenWidth, windowContext_->screenHeight);
+    ImGui::Text("Render Resolution: %ux%u", drawExtent_.width, drawExtent_.height);
+    ImGui::Text("FPS: %.2f", displayedFPS);
 
-	if (ImGui::Begin("Resolution", nullptr, windowFlags))
-	{
-		u32 width, height;
-		windowContext_->GetWindowSize(width, height);
-		ImGui::Text("Window Resolution: %ux%u", width, height);
-		ImGui::Text("Internal Resolution: %ux%u", drawExtent_.width, drawExtent_.height);
-		ImGui::Text("FPS: %f", displayedFPS);
-
-		for (const auto& [functionName, elapsedMillis] : timingResults)
-		{
-			ImGui::Text("%s: %.3f ms", functionName.c_str(), elapsedMillis);
-		}
-	}
-	ImGui::End();
+    for (const auto& [functionName, elapsedMillis] : timingResults)
+    {
+        ImGui::Text("%s: %.3f ms", functionName.c_str(), elapsedMillis);
+    }
 }
-
 
 void VkEngine::RenderMemoryUsageImGui()
 {
-    ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
+    // Get VRAM usage data
+    GetVRAMUsage(vd.physicalDevice, allocator_, vramUsage);
 
-    if (ImGui::Begin("Memory Usage", &showMemoryUsage_, windowFlags))
-    {
-        // Get the budget info for each heap
-        VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
-        vmaGetHeapBudgets(allocator_, budgets);
+    ImGui::Text("VRAM Overview:");
+    float totalMB = static_cast<float>(vramUsage.totalVRAM) / (1024.0f * 1024.0f);
+    float usedMB = static_cast<float>(vramUsage.usedVRAM) / (1024.0f * 1024.0f);
+    float freeMB = totalMB - usedMB;
 
-        // Static variables for refresh control
-        static bool   autoRefresh     = true;
-        static f32    refreshTimer    = 0.0f;
-        constexpr f32 refreshInterval = 1.0f; // Refresh every 1 second
-        static char*  statsString     = nullptr;
+    ImGui::Text("Allocated VRAM: %.2f MB", usedMB);
+    ImGui::Text("Free VRAM: %.2f MB", freeMB);
+    ImGui::Text("Total VRAM: %.2f MB", totalMB);
 
-        // Heap statistics
-        if (ImGui::CollapsingHeader("Heap Statistics"))
-        {
-            // Loop through each memory heap
-            for (u32 i = 0; i < VK_MAX_MEMORY_HEAPS; ++i)
-            {
-                // Only display heaps that are used
-                if (budgets[i].budget > 0 || budgets[i].usage > 0)
-                {
-                    ImGui::Text("Heap %u:", i);
-                    ImGui::Indent();
-
-                    ImGui::Text("Block Count: %u", budgets[i].statistics.blockCount);
-                    ImGui::Text("Allocation Count: %u", budgets[i].statistics.allocationCount);
-
-                    ImGui::Text("Used Memory: %.2f MB", static_cast<double>(budgets[i].usage) / (1024.0 * 1024.0));
-                    ImGui::Text("Budget: %.2f MB", static_cast<double>(budgets[i].budget) / (1024.0 * 1024.0));
-
-                    ImGui::Text("Allocation Bytes: %.2f MB", static_cast<double>(budgets[i].statistics.allocationBytes) / (1024.0 * 1024.0));
-                    ImGui::Text("Block Bytes: %.2f MB", static_cast<double>(budgets[i].statistics.blockBytes) / (1024.0 * 1024.0));
-
-                    ImGui::Unindent();
-                    ImGui::Separator();
-                }
-            }
-        }
-
-        // Detailed allocation stats
-        if (ImGui::CollapsingHeader("Detailed Allocations"))
-        {
-            ImGui::Checkbox("Auto Refresh", &autoRefresh);
-
-            if (autoRefresh)
-            {
-                refreshTimer += ImGui::GetIO().DeltaTime;
-                if (refreshTimer >= refreshInterval)
-                {
-                    refreshTimer = 0.0f;
-                    if (statsString)
-                    {
-                        vmaFreeStatsString(allocator_, statsString);
-                        statsString = nullptr;
-                    }
-                    vmaBuildStatsString(allocator_, &statsString, VK_TRUE);
-                }
-            }
-            else
-            {
-                if (ImGui::Button("Manual Refresh"))
-                {
-                    if (statsString)
-                    {
-                        vmaFreeStatsString(allocator_, statsString);
-                        statsString = nullptr;
-                    }
-                    vmaBuildStatsString(allocator_, &statsString, VK_TRUE);
-                }
-            }
-
-            // Display the stats string
-            if (statsString)
-            {
-                ImGui::TextWrapped("%s", statsString);
-            }
-        }
-        else
-        {
-            // Free the stats string if the section is collapsed
-            if (statsString)
-            {
-                vmaFreeStatsString(allocator_, statsString);
-                statsString = nullptr;
-            }
-        }
-    }
-    ImGui::End();
+    std::string usageText = std::to_string(static_cast<int>(vramUsage.usagePercentage)) + "% Used";
+    ImGui::ProgressBar(vramUsage.usagePercentage / 100.0f, ImVec2(0.0f, 0.0f), usageText.c_str());
 }
 
-void VkEngine::RenderMainMenu()
+void VkEngine::RenderSettingsImGui()
 {
-	if (ImGui::BeginMainMenuBar())
+    // Render scale slider
+    ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.0f);
+	if (ImGui::BeginPopupContextItem("Render Scale Options"))
 	{
-		// File Menu
-		if (ImGui::BeginMenu("File"))
-		{
-			if (ImGui::MenuItem("New Scene")) { /* Handle new scene */ }
-			if (ImGui::MenuItem("Save Scene")) { /* Handle save scene */ }
-			if (ImGui::MenuItem("Exit Program")) { PostQuitMessage(0); }
-			ImGui::EndMenu();
-		}
-
-		// View Menu
-		if (ImGui::BeginMenu("View"))
-		{
-			if (ImGui::MenuItem("Toggle Fullscreen"))
-			{
-				windowContext_->ToggleFullscreen();
-			}
-			ImGui::EndMenu();
-		}
-
-		// Options Menu
-		if (ImGui::BeginMenu("Options"))
-		{
-			ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.f);
-
-			// Background effect settings
-			ImGui::Separator();
-			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect_];
-			ImGui::Text("Selected effect: %s", selected.name);
-			ImGui::SliderInt("Effect Index", &currentBackgroundEffect_, 0, static_cast<int>(backgroundEffects.size()) - 1);
-			ImGui::InputFloat4("data1", glm::value_ptr(selected.data.data1));
-			ImGui::InputFloat4("data2", glm::value_ptr(selected.data.data2));
-			ImGui::InputFloat4("data3", glm::value_ptr(selected.data.data3));
-			ImGui::InputFloat4("data4", glm::value_ptr(selected.data.data4));
-
-			// Camera settings
-			ImGui::Separator();
-			ImGui::Text("Camera Settings");
-			ImGui::SliderFloat3("Position", glm::value_ptr(cameraPosition), -100.0f, 100.0f);
-			ImGui::SliderFloat("FOV", &fov, 1.0f, 180.0f);
-			ImGui::InputFloat("Near Plane", &nearPlane, 0.01f, 1.0f, "%.2f");
-			ImGui::InputFloat("Far Plane", &farPlane, 10.0f, 1000.0f, "%.2f");
-
-			ImGui::EndMenu();
-		}
-
-		ImGui::EndMainMenuBar();
+		if (ImGui::MenuItem("Reset to Default")) renderScale = 1.0f;
+		ImGui::EndPopup();
 	}
+
+    // Background effect settings
+    ImGui::Separator();
+    ComputeEffect& selected = backgroundEffects[currentBackgroundEffect_];
+    ImGui::Text("Selected effect: %s", selected.name);
+    ImGui::SliderInt("Effect Index", &currentBackgroundEffect_, 0, static_cast<int>(backgroundEffects.size()) - 1);
+
+    // Camera settings
+    ImGui::Separator();
+    ImGui::Text("Camera Settings");
+    ImGui::SliderFloat3("Position", glm::value_ptr(camera_.position), -100.0f, 100.0f);
+    ImGui::SliderFloat("FOV", &fov, 1.0f, 180.0f);
+    ImGui::SliderFloat("Near Plane", &nearPlane, 0.01f, 1.0f, "%.2f");
+    ImGui::SliderFloat("Far Plane", &farPlane, 10.0f, 1000.0f, "%.2f");
+}
+
+void VkEngine::RenderMainMenu() const
+{
+    if (ImGui::BeginMainMenuBar())
+    {
+        if (ImGui::BeginMenu("File"))
+        {
+            // if (ImGui::MenuItem("New Scene")) { /* Handle new scene */ }
+            // if (ImGui::MenuItem("Save Scene")) { /* Handle save scene */ }
+            if (ImGui::MenuItem("Exit Program")) { PostQuitMessage(0); }
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("View"))
+        {
+            if (ImGui::MenuItem("Toggle Fullscreen"))
+            {
+                windowContext_->ToggleFullscreen();
+            }
+            ImGui::EndMenu();
+        }
+
+        ImGui::EndMainMenuBar();
+    }
 }
 
 void VkEngine::RenderUI()
 {
-	// Main Menu
-	RenderMainMenu();
+    // Render the main menu at the top
+    RenderMainMenu();
 
-	// Panels for Quick Stats, VRAM, etc.
-	RenderQuickStatsImGui();
-	RenderMemoryUsageImGui(); // Call separately
+    // Create a tab bar for different sections
+    ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize;
+    if (ImGui::Begin("Info", nullptr, windowFlags))
+    {
+        if (ImGui::BeginTabBar("Tabs"))
+        {
+            if (ImGui::BeginTabItem("Quick Stats"))
+            {
+                RenderQuickStatsImGui();
+                ImGui::EndTabItem();
+            }
+
+            if (ImGui::BeginTabItem("Memory Usage"))
+            {
+                RenderMemoryUsageImGui();
+                ImGui::EndTabItem();
+            }
+
+            if (ImGui::BeginTabItem("Scene Settings"))
+            {
+                RenderSettingsImGui();
+                ImGui::EndTabItem();
+            }
+
+            ImGui::EndTabBar();
+        }
+    }
+    ImGui::End();
 }
 
 #pragma endregion UI
@@ -393,10 +344,11 @@ void VkEngine::InitVulkan()
 	}
 	vd.physicalDevice = physDeviceRet.value().physical_device;
 
-
 	VkPhysicalDeviceProperties deviceProperties;
 	vkGetPhysicalDeviceProperties(vd.physicalDevice, &deviceProperties);
-	LOG(INFO, "Selected GPU: " + std::string(deviceProperties.deviceName));
+	gpuName = deviceProperties.deviceName;
+
+	LOG(INFO, "Selected GPU: " + std::string(gpuName));
 	LOG(INFO, "Driver Version: " + decodeDriverVersion(deviceProperties.driverVersion, deviceProperties.vendorID));
 
 	vkb::DeviceBuilder deviceBuilder{physDeviceRet.value()};
@@ -750,6 +702,34 @@ std::string VkEngine::decodeDriverVersion(u32 driverVersion, u32 vendorID)
 	return versionString;
 }
 
+void VkEngine::GetVRAMUsage(VkPhysicalDevice physicalDevice, VmaAllocator allocator, VRAMUsage& usage)
+{
+	// Get total VRAM from device-local heaps
+	VkPhysicalDeviceMemoryProperties memoryProperties;
+	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
+
+	usage.totalVRAM = 0;
+	for (uint32_t i = 0; i < memoryProperties.memoryHeapCount; i++) {
+		if (memoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+			usage.totalVRAM += memoryProperties.memoryHeaps[i].size;
+		}
+	}
+
+	// Get used VRAM from VMA's heap budgets
+	VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
+	vmaGetHeapBudgets(allocator, budgets);
+
+	usage.usedVRAM = 0;
+	for (uint32_t i = 0; i < memoryProperties.memoryHeapCount; i++) {
+		if (memoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+			usage.usedVRAM += budgets[i].usage;
+		}
+	}
+
+	// Update derived fields
+	usage.Update();
+}
+
 #pragma endregion Helper Functions
 
 #pragma region Surface Management
@@ -1043,7 +1023,7 @@ AllocatedImage VkEngine::CreateImageData(void* data, VkExtent3D size, VkFormat f
 
 #pragma region Buffer
 
-AllocatedBuffer VkEngine::CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
+AllocatedBuffer VkEngine::CreateBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) const
 {
 	// allocate buffer
 	VkBufferCreateInfo bufferInfo
@@ -1651,7 +1631,6 @@ void VkEngine::UpdateScene()
     if (modelDrawn)
     {
         LOG(INFO, "Number of opaque objects: ", mainDrawContext.OpaqueSurfaces.size());
-    	LOG(INFO, "Number of transparant objects: ", mainDrawContext.TransparentSurfaces.size());
         modelDrawn = false;
     }
 }

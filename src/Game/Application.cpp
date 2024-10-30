@@ -54,7 +54,7 @@ void Application::CleanupEngine()
 #ifdef VULKAN_BUILD
     vkEngine_.Cleanup();
 #elif defined(OPENGL_BUILD)
-    glEngine_.Cleanup();
+    // glEngine_.Cleanup();
 #endif
 }
 
@@ -65,12 +65,11 @@ void Application::Run()
         LOG(ERR, "Engine not initialized. Exiting...");
         return;
     }
-
+#ifdef VULKAN_BUILD
 	ShowWindow(windowContext_.hwnd, SW_SHOW);
 	SetForegroundWindow(windowContext_.hwnd);
 	SetFocus(windowContext_.hwnd);
 
-#ifdef VULKAN_BUILD
     vkEngine_.Run();
 #elif defined(OPENGL_BUILD)
     glEngine_.RenderLoop();

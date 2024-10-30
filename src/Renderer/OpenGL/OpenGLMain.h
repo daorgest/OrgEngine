@@ -15,9 +15,10 @@ namespace GraphicsAPI::OpenGL
 	public:
 		explicit OpenGLMain(Platform::WindowContext* wc);
 		~OpenGLMain();
+		void Cleanup();
 
 		bool Init() const;
-		void FramebufferSizeCallback(Platform::WindowContext* window, int width, int height) const;
+		void FramebufferSizeCallback(int width, int height) const;
 		void Render() const;
 		void RenderLoop() const;
 	private:

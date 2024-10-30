@@ -45,8 +45,20 @@ namespace Platform
 		bool isFocused    = false; // Window focus state
 
 		explicit WindowContext(u32 width = 0, u32 height = 0, std::wstring name = L"OrgEngine - Debug")
-			: appName(std::move(name)), screenWidth(width), screenHeight(height)
+	: appName(std::move(name)), screenWidth(width), screenHeight(height)
 		{
+#ifdef OPENGL_BUILD
+			if (screenWidth == 0 || screenHeight == 0)
+			{
+				const SDL_DisplayMode* dm = SDL_GetDesktopDisplayMode(0); // Use display index 0
+				if (dm != nullptr)
+				{
+					screenWidth = dm->w;
+					screenHeight = dm->h;
+				}
+			}
+			lastTime = SDL_GetTicks(); // Initialize SDL timer
+#else
 			if (screenWidth == 0)
 			{
 				screenWidth = GetSystemMetrics(SM_CXSCREEN);
@@ -58,13 +70,12 @@ namespace Platform
 			windowPosX = (GetSystemMetrics(SM_CXSCREEN) - screenWidth) / 2;
 			windowPosY = (GetSystemMetrics(SM_CYSCREEN) - screenHeight) / 2;
 
-#ifdef OPENGL_BUILD
-			lastTime = SDL_GetTicks64(); // Initialize SDL timer
-#else
 			QueryPerformanceFrequency(&frequency); // Initialize high-resolution timer for Win32
 			QueryPerformanceCounter(&lastTime);    // Set initial time
 #endif
 		}
+
+
 
 		// Method to update input with current window size
 		void GetWindowSize(u32& width, u32& height) const
@@ -135,7 +146,7 @@ namespace Platform
 		double GetDeltaTime()
 		{
 #ifdef OPENGL_BUILD
-			u64 currentTime = SDL_GetTicks64();
+			u64 currentTime = SDL_GetTicks();
 			double deltaTime = (currentTime - lastTime) / 1000.0; // Convert to seconds
 			lastTime = currentTime;
 #else
